@@ -82,13 +82,28 @@ export const SIMULATION_CONFIG = {
       groundClearance: 0.04
     },
     driveWheels: {
-      radius: 0.10,
+      radius: 0.10, // meters (10 cm)
       width: 0.05,
-      trackWidth: 0.64 // Distance between left and right wheels
+      trackWidth: 0.64 // Distance between left and right wheels (meters)
     },
     casterWheel: {
       radius: 0.05,
       offsetZ: 0.0
+    },
+    // Differential drive kinematics and dynamics limits
+    drive: {
+      maxLinearVelocity: 2.2,        // m/s (~7.9 km/h)
+      maxAngularVelocity: 3.2,       // rad/s (~183 deg/s)
+      maxLinearAcceleration: 3.5,    // m/s²
+      maxAngularAcceleration: 6.0,   // rad/s²
+      maxWheelAngularVelocity: 25.0, // rad/s (~238.7 RPM)
+      pidHeading: {
+        kp: 4.5,
+        ki: 0.2,
+        kd: 0.35,
+        maxOutput: 3.2,              // Max angular velocity command (rad/s)
+        integralLimit: 1.2           // Anti-windup clamping
+      }
     },
     intake: {
       width: 0.42,

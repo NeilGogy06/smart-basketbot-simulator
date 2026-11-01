@@ -33,11 +33,11 @@ export class Controls {
       <div class="control-group">
         <span class="control-group-label">SIMULATION</span>
         <div class="button-row">
-          <button id="btn-start" class="btn btn-primary" title="Start / Resume physics (Space)">
+          <button id="btn-start" class="btn btn-primary" title="Start / Resume physics (P)">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
             <span>Start</span>
           </button>
-          <button id="btn-pause" class="btn btn-secondary" title="Pause physics (Space)">
+          <button id="btn-pause" class="btn btn-secondary" title="Pause physics (P)">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
             <span>Pause</span>
           </button>
@@ -61,7 +61,7 @@ export class Controls {
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3V4a2 2 0 0 1 2-2m-3 8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
             <span>Reset Robot</span>
           </button>
-          <button id="btn-drop-test" class="btn btn-accent" title="Drop ball from 3.2m to test Rapier bouncing (D)">
+          <button id="btn-drop-test" class="btn btn-accent" title="Drop ball from 3.2m to test Rapier bouncing (T)">
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             <span>Drop Test</span>
           </button>
@@ -144,7 +144,7 @@ export class Controls {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       switch (e.code) {
-        case 'Space':
+        case 'KeyP':
           e.preventDefault();
           const newState = this.simulation.togglePlayPause();
           this.updatePlayState(newState);
@@ -157,7 +157,7 @@ export class Controls {
           e.preventDefault();
           this.simulation.resetBall();
           break;
-        case 'KeyD':
+        case 'KeyT':
           e.preventDefault();
           this.simulation.dropBallTest();
           break;

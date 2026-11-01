@@ -293,6 +293,19 @@ html, body {
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.badge-red {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: pulse-danger 1.5s infinite;
+}
+
+@keyframes pulse-danger {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.6)); }
+  100% { opacity: 0.8; }
+}
+
 .telemetry-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -539,6 +552,104 @@ kbd {
   color: #38bdf8;
   border-color: rgba(56, 189, 248, 0.5);
   font-weight: 700;
+}
+
+/* HEADING PRESETS */
+.heading-preset-row {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sub-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.btn-preset-mini {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 3px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-preset-mini:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+}
+
+/* TELEOP WASD PAD */
+.teleop-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.teleop-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-teleop {
+  width: 58px;
+  height: 36px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.1s ease;
+  user-select: none;
+}
+
+.btn-teleop:hover {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+}
+
+.btn-teleop:active {
+  background: rgba(56, 189, 248, 0.5);
+  transform: scale(0.96);
+}
+
+.btn-estop {
+  width: 72px;
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #fca5a5;
+  font-size: 0.68rem;
+}
+
+.btn-estop:hover {
+  background: rgba(239, 68, 68, 0.5);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.btn-estop:active {
+  background: rgba(239, 68, 68, 0.7);
 }
 
 /* TYPOGRAPHY HELPERS */

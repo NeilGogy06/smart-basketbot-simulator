@@ -1,27 +1,29 @@
 /**
  * Robot.js
- * Visual model and Rapier 3D physics representation of the autonomous mobile
- * basketball robot (SMART-BASKETBOT).
+ * Visual model, Rapier 3D physics representation, and differential-drive robotics
+ * subsystem for the SMART-BASKETBOT autonomous mobile robot.
  *
  * Includes:
  * - High-rigidity mobile base chassis with industrial bumpers
  * - Two independent high-traction differential drive wheels + rear caster
- * - Anodized aluminum extrusion upper structural tower
- * - Front ball intake scoop with compliant silicone rollers
- * - Angled dual-flywheel shooting mechanism
- * - Mast-mounted stereo depth camera, 2D LiDAR turret, and status beacon
- * - Dynamic Rapier rigid body and transform synchronization.
+ * - Dynamic Rapier rigid body with pitch/roll stabilization (yaw-enabled)
+ * - Dedicated DifferentialDriveController and RobotInputController
+ * - High-visibility rotating wheel assemblies reflecting genuine wheel RPM
+ * - Upper structural frame, front intake scoop, launcher mockup, LiDAR and stereo depth camera.
  */
 
 import * as THREE from 'three';
 import { SIMULATION_CONFIG } from '../simulation/SimulationConfig.js';
+import { DifferentialDriveController } from './DifferentialDriveController.js';
+import { RobotInputController } from './RobotInputController.js';
 
 export class Robot {
   /**
    * @param {THREE.Scene} scene
    * @param {import('../simulation/PhysicsWorld.js').PhysicsWorld} physicsWorld
+   * @param {() => boolean} [isSimulationActive]
    */
-  constructor(scene, physicsWorld) {
+  constructor(scene, physicsWorld, isSimulationActive = () => true) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
     this.config = SIMULATION_CONFIG.robot;
@@ -35,7 +37,16 @@ export class Robot {
     this.rigidBody = null;
     this.collider = null;
 
-    // Component references for potential animation (wheels, rollers, lidar)
+    // Subsystems
+    const driveConfig = {
+      wheelRadius: this.config.driveWheels.radius,
+      trackWidth: this.config.driveWheels.trackWidth,
+      ...this.config.drive
+    };
+    this.driveController = new DifferentialDriveController(driveConfig);
+    this.inputController = new RobotInputController(this.driveController, isSimulationActive);
+
+    // Component references for visual animation
     this.leftWheel = null;
     this.rightWheel = null;
     this.intakeRoller = null;
@@ -83,6 +94,12 @@ export class Robot {
       metalness: 0.7
     });
 
+    const spokeMarkerMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, // White visual spoke markers for clear rotation visibility
+      roughness: 0.2,
+      metalness: 0.9
+    });
+
     const accentOrangeMat = new THREE.MeshStandardMaterial({
       color: 0xf97316, // Safety orange accents & rollers
       roughness: 0.4,
@@ -120,7 +137,6 @@ export class Robot {
     this.group.add(bumperMesh);
 
     // Front Bumper Cutout for Ball Intake
-    // Two front bumper horns framing the intake opening
     const hornL = 0.22;
     const hornW = 0.08;
     const hornH = 0.10;
@@ -134,33 +150,47 @@ export class Robot {
     rightHorn.position.set(c.length / 2 - 0.02, c.groundClearance + 0.05, -(this.config.intake.width / 2) - 0.04);
     this.group.add(rightHorn);
 
-    // 2. Drive Wheels (Left & Right)
+    // 2. Drive Wheels (Left & Right) with High-Visibility Spoke Markers
     const dw = this.config.driveWheels;
     const wheelGeom = new THREE.CylinderGeometry(dw.radius, dw.radius, dw.width, 24);
 
+    // Helper to build a wheel assembly with visible rotating spoke lines
+    const buildWheelAssembly = () => {
+      const assembly = new THREE.Group();
+
+      const tire = new THREE.Mesh(wheelGeom, rubberMat);
+      tire.rotation.x = Math.PI / 2;
+      tire.castShadow = true;
+      assembly.add(tire);
+
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(dw.radius * 0.65, dw.radius * 0.65, dw.width + 0.002, 16), rimMat);
+      rim.rotation.x = Math.PI / 2;
+      assembly.add(rim);
+
+      // Add 4 high-contrast radial spoke markers on outer wheel face for rotation visibility
+      for (let i = 0; i < 4; i++) {
+        const angle = (i * Math.PI) / 2;
+        const spokeGeom = new THREE.BoxGeometry(0.012, dw.radius * 0.55, dw.width + 0.005);
+        const spoke = new THREE.Mesh(spokeGeom, spokeMarkerMat);
+        spoke.position.set(Math.cos(angle) * (dw.radius * 0.3), Math.sin(angle) * (dw.radius * 0.3), 0);
+        spoke.rotation.z = angle;
+        assembly.add(spoke);
+      }
+
+      return assembly;
+    };
+
     // Left Drive Wheel
-    const leftWheelGroup = new THREE.Group();
-    const lTire = new THREE.Mesh(wheelGeom, rubberMat);
-    lTire.rotation.x = Math.PI / 2;
-    lTire.castShadow = true;
-    const lRim = new THREE.Mesh(new THREE.CylinderGeometry(dw.radius * 0.65, dw.radius * 0.65, dw.width + 0.002, 16), rimMat);
-    lRim.rotation.x = Math.PI / 2;
-    leftWheelGroup.add(lTire, lRim);
-    leftWheelGroup.position.set(0.06, dw.radius, dw.trackWidth / 2);
-    this.group.add(leftWheelGroup);
-    this.leftWheel = leftWheelGroup;
+    const leftWheelAssembly = buildWheelAssembly();
+    leftWheelAssembly.position.set(0.06, dw.radius, dw.trackWidth / 2);
+    this.group.add(leftWheelAssembly);
+    this.leftWheel = leftWheelAssembly;
 
     // Right Drive Wheel
-    const rightWheelGroup = new THREE.Group();
-    const rTire = new THREE.Mesh(wheelGeom, rubberMat);
-    rTire.rotation.x = Math.PI / 2;
-    rTire.castShadow = true;
-    const rRim = new THREE.Mesh(new THREE.CylinderGeometry(dw.radius * 0.65, dw.radius * 0.65, dw.width + 0.002, 16), rimMat);
-    rRim.rotation.x = Math.PI / 2;
-    rightWheelGroup.add(rTire, rRim);
-    rightWheelGroup.position.set(0.06, dw.radius, -dw.trackWidth / 2);
-    this.group.add(rightWheelGroup);
-    this.rightWheel = rightWheelGroup;
+    const rightWheelAssembly = buildWheelAssembly();
+    rightWheelAssembly.position.set(0.06, dw.radius, -dw.trackWidth / 2);
+    this.group.add(rightWheelAssembly);
+    this.rightWheel = rightWheelAssembly;
 
     // 3. Rear Support Caster Wheel Assembly
     const casterR = this.config.casterWheel.radius;
@@ -220,20 +250,17 @@ export class Robot {
     const intakeGroup = new THREE.Group();
     intakeGroup.position.set(c.length / 2 - 0.05, c.groundClearance + 0.06, 0);
 
-    // Beveled ramp plate
     const rampGeom = new THREE.BoxGeometry(0.20, 0.015, this.config.intake.width);
     const ramp = new THREE.Mesh(rampGeom, aluminumMat);
     ramp.rotation.z = -0.18;
     ramp.position.set(0.06, 0.01, 0);
     intakeGroup.add(ramp);
 
-    // Rotating compliant intake roller bar
     const rollerShaftGeom = new THREE.CylinderGeometry(0.01, 0.01, this.config.intake.width, 12);
     const rollerShaft = new THREE.Mesh(rollerShaftGeom, aluminumMat);
     rollerShaft.rotation.x = Math.PI / 2;
     rollerShaft.position.set(0.16, 0.06, 0);
 
-    // Silicone gripper rings on roller shaft
     for (let rz = -0.16; rz <= 0.16; rz += 0.08) {
       const ringGeom = new THREE.CylinderGeometry(this.config.intake.rollerRadius, this.config.intake.rollerRadius, 0.03, 16);
       const ring = new THREE.Mesh(ringGeom, accentOrangeMat);
@@ -245,17 +272,14 @@ export class Robot {
     this.group.add(intakeGroup);
 
     // 6. Placeholder Shooting Mechanism
-    // Dual-flywheel angled launcher barrel pointed forward (+X) and up
     const shooterGroup = new THREE.Group();
     shooterGroup.position.set(0.02, deck.position.y + 0.12, 0);
     shooterGroup.rotation.z = -this.config.shooter.elevationAngleDeg * (Math.PI / 180);
 
-    // Dual guide rails / barrel
     const railGeom = new THREE.BoxGeometry(this.config.shooter.barrelLength, 0.03, 0.28);
     const rails = new THREE.Mesh(railGeom, aluminumMat);
     shooterGroup.add(rails);
 
-    // Left & Right Flywheels
     const flywheelGeom = new THREE.CylinderGeometry(0.075, 0.075, 0.035, 20);
     const leftFlywheel = new THREE.Mesh(flywheelGeom, rimMat);
     leftFlywheel.position.set(0.12, 0.06, 0.15);
@@ -275,12 +299,10 @@ export class Robot {
     mast.position.set(0.12, deck.position.y + 0.12, 0);
     this.group.add(mast);
 
-    // Stereo Depth Camera (Intel RealSense form factor)
     const camGeom = new THREE.BoxGeometry(0.03, 0.028, 0.14);
     const camBody = new THREE.Mesh(camGeom, glassSensorMat);
     camBody.position.set(0.02, 0.10, 0);
 
-    // Left & Right Optical Lenses
     const lensGeom = new THREE.CylinderGeometry(0.007, 0.007, 0.005, 12);
     const leftLens = new THREE.Mesh(lensGeom, lensMat);
     leftLens.rotation.z = Math.PI / 2;
@@ -294,7 +316,6 @@ export class Robot {
 
     mast.add(camBody);
 
-    // LiDAR Turret on top of mast
     const lidarBaseGeom = new THREE.CylinderGeometry(0.03, 0.03, 0.025, 16);
     const lidarBase = new THREE.Mesh(lidarBaseGeom, chassisMat);
     lidarBase.position.set(0, 0.13, 0);
@@ -306,7 +327,6 @@ export class Robot {
     mast.add(lidarBase);
     this.lidarPuck = lidarPuck;
 
-    // Omnidirectional LED Beacon on top
     const ledGeom = new THREE.SphereGeometry(0.012, 12, 8);
     const ledMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
     const led = new THREE.Mesh(ledGeom, ledMat);
@@ -320,13 +340,12 @@ export class Robot {
   }
 
   /**
-   * Creates Rapier dynamic rigid body and physical colliders for the robot.
+   * Creates Rapier dynamic rigid body and physical colliders with roll/pitch stabilization.
    */
   buildPhysics() {
     const c = this.config.chassis;
     const totalHeight = 0.75;
 
-    // We represent the robot physics using a dynamic rigid body with high mass and low center of gravity
     const { body, collider } = this.physicsWorld.createDynamicBox(
       this.initialPosition.x,
       this.initialPosition.y + totalHeight / 2 - 0.1,
@@ -335,14 +354,18 @@ export class Robot {
       totalHeight,
       c.width,
       this.config.mass,
-      0.15, // Low restitution (rigid metal)
+      0.15, // Low restitution
       0.85, // High tire friction
-      0.8,  // Linear damping prevents sliding
-      0.8   // Angular damping prevents tip-overs
+      0.4,  // Linear damping
+      0.5   // Angular damping
     );
 
     this.rigidBody = body;
     this.collider = collider;
+
+    // Prevent tipping/pitching over by locking X (pitch) and Z (roll) rotations,
+    // while fully permitting Y (yaw) rotation and full 3D translation.
+    this.rigidBody.setEnabledRotations(false, true, false, true);
 
     // Initial heading rotation
     const halfAngle = this.initialHeading / 2;
@@ -358,10 +381,58 @@ export class Robot {
   }
 
   /**
-   * Resets the robot back to starting position and heading with zero velocity.
+   * Updates robot kinematics, applies actuator velocities to Rapier body,
+   * spins visual wheel meshes, and animates sensor mast.
+   * @param {number} deltaTime Frame time step in seconds
+   */
+  update(deltaTime) {
+    if (!this.rigidBody) return;
+
+    // 1. Query current physics state
+    const currentHeading = this.getHeading();
+    const currentLinvel = this.rigidBody.linvel();
+
+    // 2. Step differential drive controller
+    const cmd = this.driveController.update(deltaTime, currentHeading);
+
+    // 3. Apply genuine physics velocities to Rapier rigid body:
+    // Preserve current vertical velocity (currentLinvel.y) for gravity & floor contact
+    this.rigidBody.setLinvel({
+      x: cmd.worldLinvelX,
+      y: currentLinvel.y,
+      z: cmd.worldLinvelZ
+    }, true);
+
+    // Apply yaw angular velocity
+    this.rigidBody.setAngvel({
+      x: 0,
+      y: cmd.worldAngvelY,
+      z: 0
+    }, true);
+
+    // 4. Update visual wheel rotation based on actual angular wheel positions
+    // Negate angle so forward rotation turns wheel in the driving direction
+    if (this.leftWheel) {
+      this.leftWheel.rotation.z = -this.driveController.wheelAngleLeft;
+    }
+    if (this.rightWheel) {
+      this.rightWheel.rotation.z = -this.driveController.wheelAngleRight;
+    }
+
+    // 5. Update sensor mast animations (spinning LiDAR puck)
+    if (this.lidarPuck) {
+      this.lidarPuck.rotation.y += deltaTime * 6.0;
+    }
+  }
+
+  /**
+   * Resets the robot back to starting position, zero velocity, and initial controller states.
    */
   reset(pos = this.initialPosition, headingRad = this.initialHeading) {
     if (!this.rigidBody) return;
+
+    this.driveController.reset();
+    this.inputController.resetKeys();
 
     const halfAngle = headingRad / 2;
     const rotation = {
@@ -371,21 +442,15 @@ export class Robot {
       w: Math.cos(halfAngle)
     };
 
-    const spawnY = pos.y + 0.28; // Center of physics bounding box
+    const spawnY = pos.y + 0.28;
     this.physicsWorld.resetBody(this.rigidBody, { x: pos.x, y: spawnY, z: pos.z }, rotation);
+
+    if (this.leftWheel) this.leftWheel.rotation.z = 0;
+    if (this.rightWheel) this.rightWheel.rotation.z = 0;
   }
 
   /**
-   * Animates subtle idle sensor rotation (LiDAR scanner spin).
-   */
-  update(deltaTime) {
-    if (this.lidarPuck) {
-      this.lidarPuck.rotation.y += deltaTime * 6.0; // 360 RPM spinning LiDAR
-    }
-  }
-
-  /**
-   * Current position of the robot.
+   * Current position of the robot in world coordinates.
    */
   getPosition() {
     if (this.rigidBody) {
@@ -395,7 +460,7 @@ export class Robot {
   }
 
   /**
-   * Current velocity vector.
+   * Current linear velocity vector in world coordinates.
    */
   getVelocity() {
     if (this.rigidBody) {
@@ -405,16 +470,52 @@ export class Robot {
   }
 
   /**
-   * Returns current heading angle in radians.
+   * Current angular velocity vector.
+   */
+  getAngularVelocity() {
+    if (this.rigidBody) {
+      return this.rigidBody.angvel();
+    }
+    return { x: 0, y: 0, z: 0 };
+  }
+
+  /**
+   * Returns current heading angle in radians [-PI, PI].
    */
   getHeading() {
     if (this.rigidBody) {
       const q = this.rigidBody.rotation();
-      // Yaw from quaternion (Y-axis rotation)
       const siny_cosp = 2 * (q.w * q.y + q.z * q.x);
       const cosy_cosp = 1 - 2 * (q.y * q.y + q.z * q.z);
       return Math.atan2(siny_cosp, cosy_cosp);
     }
     return this.group.rotation.y;
+  }
+
+  /**
+   * Returns full differential drive and robotics telemetry.
+   */
+  getDriveTelemetry() {
+    const heading = this.getHeading();
+    const driveTel = this.driveController.getTelemetry(heading);
+    const linvel = this.getVelocity();
+    const angvel = this.getAngularVelocity();
+
+    return {
+      ...driveTel,
+      actualHeadingRad: heading,
+      actualHeadingDeg: (heading * 180) / Math.PI,
+      actualLinearSpeed: Math.hypot(linvel.x, linvel.z),
+      actualAngularSpeed: angvel.y
+    };
+  }
+
+  /**
+   * Cleans up event listeners and controller resources.
+   */
+  destroy() {
+    if (this.inputController) {
+      this.inputController.destroy();
+    }
   }
 }

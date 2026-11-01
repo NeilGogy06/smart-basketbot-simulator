@@ -1,7 +1,7 @@
 /**
  * Dashboard.js
  * Renders the dark-themed engineering HUD, status monitors, telemetry metrics,
- * and real-time state displays for the SMART-BASKETBOT simulation.
+ * differential-drive kinematics monitors, and interactive robot teleoperation deck.
  */
 
 export class Dashboard {
@@ -18,6 +18,7 @@ export class Dashboard {
     this.nodes = {};
 
     this.render();
+    this.bindTeleopControls();
     this.subscribeTelemetry();
   }
 
@@ -66,14 +67,15 @@ export class Dashboard {
 
       <!-- SIDEBAR TELEMETRY PANELS -->
       <aside class="sim-telemetry-panel">
-        <!-- ROBOT TELEMETRY -->
+
+        <!-- ROBOT POSE & DYNAMICS -->
         <div class="telemetry-card">
           <div class="card-header">
             <div class="card-title-wrap">
               <svg class="card-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3V4a2 2 0 0 1 2-2m-3 8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
-              <span>ROBOT TELEMETRY</span>
+              <span>ROBOT POSE & DYNAMICS</span>
             </div>
-            <span class="badge badge-cyan">ONLINE</span>
+            <span class="badge badge-cyan" id="bot-movement-badge">STOPPED</span>
           </div>
 
           <div class="telemetry-grid">
@@ -82,39 +84,118 @@ export class Dashboard {
               <span class="grid-value font-mono" id="bot-pos-x">0.00 m</span>
             </div>
             <div class="grid-item">
-              <span class="grid-label">Position Y</span>
-              <span class="grid-value font-mono" id="bot-pos-y">0.00 m</span>
-            </div>
-            <div class="grid-item">
               <span class="grid-label">Position Z</span>
               <span class="grid-value font-mono" id="bot-pos-z">0.00 m</span>
             </div>
             <div class="grid-item">
-              <span class="grid-label">Heading</span>
-              <span class="grid-value font-mono" id="bot-heading">0.0°</span>
+              <span class="grid-label">Heading θ</span>
+              <span class="grid-value font-mono" id="bot-heading">0.0° (0.00 rad)</span>
             </div>
             <div class="grid-item">
-              <span class="grid-label">Velocity</span>
-              <span class="grid-value font-mono" id="bot-speed">0.00 m/s</span>
+              <span class="grid-label">Linear Vel (v)</span>
+              <span class="grid-value font-mono text-cyan" id="bot-speed">0.00 m/s</span>
             </div>
             <div class="grid-item">
-              <span class="grid-label">Hoop Dist</span>
+              <span class="grid-label">Angular Vel (ω)</span>
+              <span class="grid-value font-mono text-amber" id="bot-angvel">0.00 rad/s</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Hoop Distance</span>
               <span class="grid-value font-mono text-cyan" id="bot-hoop-dist">0.00 m</span>
             </div>
           </div>
+        </div>
 
-          <div class="sub-status-list">
-            <div class="sub-status-item">
-              <span>Drive Actuation:</span>
-              <span class="text-success font-mono">Differential (Ready)</span>
+        <!-- DIFFERENTIAL DRIVE WHEELS -->
+        <div class="telemetry-card">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>
+              <span>DIFFERENTIAL DRIVE WHEELS</span>
             </div>
-            <div class="sub-status-item">
-              <span>Intake Mechanism:</span>
-              <span class="text-amber font-mono">Compliant Roller</span>
+            <span class="badge badge-slate" id="drive-mode-badge">MANUAL</span>
+          </div>
+
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Left Wheel RPM</span>
+              <span class="grid-value font-mono text-cyan" id="wheel-rpm-left">0.0 RPM</span>
             </div>
-            <div class="sub-status-item">
-              <span>Vision Sensor:</span>
-              <span class="text-cyan font-mono">Stereo RealSense + LiDAR</span>
+            <div class="grid-item">
+              <span class="grid-label">Right Wheel RPM</span>
+              <span class="grid-value font-mono text-cyan" id="wheel-rpm-right">0.0 RPM</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Left Wheel Vel (v_L)</span>
+              <span class="grid-value font-mono" id="wheel-vl">0.00 m/s</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Right Wheel Vel (v_R)</span>
+              <span class="grid-value font-mono" id="wheel-vr">0.00 m/s</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- HEADING PID & STABILIZATION -->
+        <div class="telemetry-card">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+              <span>HEADING CONTROL (PID)</span>
+            </div>
+            <span class="badge badge-slate" id="pid-status-badge">STANDBY</span>
+          </div>
+
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Desired Heading</span>
+              <span class="grid-value font-mono" id="pid-target-heading">0.0°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Actual Heading</span>
+              <span class="grid-value font-mono" id="pid-actual-heading">0.0°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Heading Error Δθ</span>
+              <span class="grid-value font-mono text-amber" id="pid-heading-error">0.0°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">PID Output (ω_cmd)</span>
+              <span class="grid-value font-mono text-cyan" id="pid-output">0.00 rad/s</span>
+            </div>
+          </div>
+
+          <!-- Quick Heading Hold Target Presets -->
+          <div class="heading-preset-row">
+            <span class="sub-label">SET HEADING:</span>
+            <button class="btn btn-preset-mini" data-heading="0">0° (Hoop)</button>
+            <button class="btn btn-preset-mini" data-heading="90">90° (Left)</button>
+            <button class="btn btn-preset-mini" data-heading="-90">-90° (Right)</button>
+            <button class="btn btn-preset-mini" data-heading="180">180°</button>
+          </div>
+        </div>
+
+        <!-- MANUAL TELEOPERATION PAD -->
+        <div class="telemetry-card">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <span>ROBOT TELEOPERATION</span>
+            </div>
+            <span class="badge badge-amber">WASD PAD</span>
+          </div>
+
+          <div class="teleop-pad">
+            <div class="teleop-row">
+              <button class="btn btn-teleop" id="btn-teleop-fwd" title="Drive Forward (W)">▲ W</button>
+            </div>
+            <div class="teleop-row">
+              <button class="btn btn-teleop" id="btn-teleop-left" title="Rotate Left (A)">◄ A</button>
+              <button class="btn btn-teleop btn-estop" id="btn-teleop-estop" title="Emergency Stop (Space)">E-STOP</button>
+              <button class="btn btn-teleop" id="btn-teleop-right" title="Rotate Right (D)">D ►</button>
+            </div>
+            <div class="teleop-row">
+              <button class="btn btn-teleop" id="btn-teleop-rev" title="Drive Reverse (S)">▼ S</button>
             </div>
           </div>
         </div>
@@ -157,48 +238,18 @@ export class Dashboard {
           </div>
         </div>
 
-        <!-- PHYSICS ENGINE MONITOR -->
-        <div class="telemetry-card">
-          <div class="card-header">
-            <div class="card-title-wrap">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-              <span>PHYSICS ENGINE (RAPIER 3D)</span>
-            </div>
-            <span class="badge badge-slate">WASM CORE</span>
-          </div>
-
-          <div class="specs-list">
-            <div class="spec-row">
-              <span class="spec-name">Integrator Gravity:</span>
-              <span class="spec-val font-mono">0.0, -9.81, 0.0 m/s²</span>
-            </div>
-            <div class="spec-row">
-              <span class="spec-name">Fixed Timestep:</span>
-              <span class="spec-val font-mono">16.67 ms (60 Hz)</span>
-            </div>
-            <div class="spec-row">
-              <span class="spec-name">Active Rigid Bodies:</span>
-              <span class="spec-val font-mono" id="phys-bodies">0</span>
-            </div>
-            <div class="spec-row">
-              <span class="spec-name">Registered Colliders:</span>
-              <span class="spec-val font-mono" id="phys-colliders">0</span>
-            </div>
-          </div>
-        </div>
-
         <!-- QUICK SHORTCUTS CHEATSHEET -->
         <div class="telemetry-card card-compact">
           <div class="cheatsheet-title">ENGINEERING HOTKEYS</div>
           <div class="shortcuts-grid">
-            <div><kbd>Space</kbd> Play / Pause</div>
+            <div><kbd>W / S</kbd> Drive Fwd / Rev</div>
+            <div><kbd>A / D</kbd> Rotate Left / Right</div>
+            <div><kbd>Space</kbd> Robot E-STOP</div>
+            <div><kbd>P</kbd> Play / Pause Sim</div>
             <div><kbd>R</kbd> Reset Sim</div>
             <div><kbd>B</kbd> Reset Ball</div>
-            <div><kbd>D</kbd> Drop Test</div>
+            <div><kbd>T</kbd> Drop Test</div>
             <div><kbd>1-4</kbd> Cameras</div>
-            <div><kbd>Left Drag</kbd> Orbit</div>
-            <div><kbd>Right Drag</kbd> Pan</div>
-            <div><kbd>Scroll</kbd> Zoom</div>
           </div>
         </div>
       </aside>
@@ -209,7 +260,7 @@ export class Dashboard {
 
     this.container.appendChild(this.domElement);
 
-    // Cache elements for updates
+    // Cache elements for rapid updates
     this.nodes = {
       statusIndicator: this.domElement.querySelector('#status-indicator'),
       statusText: this.domElement.querySelector('#txt-sim-status'),
@@ -217,23 +268,81 @@ export class Dashboard {
       simSteps: this.domElement.querySelector('#txt-sim-steps'),
       fps: this.domElement.querySelector('#txt-fps'),
 
+      botMovementBadge: this.domElement.querySelector('#bot-movement-badge'),
       botPosX: this.domElement.querySelector('#bot-pos-x'),
-      botPosY: this.domElement.querySelector('#bot-pos-y'),
       botPosZ: this.domElement.querySelector('#bot-pos-z'),
       botHeading: this.domElement.querySelector('#bot-heading'),
       botSpeed: this.domElement.querySelector('#bot-speed'),
+      botAngvel: this.domElement.querySelector('#bot-angvel'),
       botHoopDist: this.domElement.querySelector('#bot-hoop-dist'),
+
+      driveModeBadge: this.domElement.querySelector('#drive-mode-badge'),
+      wheelRpmLeft: this.domElement.querySelector('#wheel-rpm-left'),
+      wheelRpmRight: this.domElement.querySelector('#wheel-rpm-right'),
+      wheelVl: this.domElement.querySelector('#wheel-vl'),
+      wheelVr: this.domElement.querySelector('#wheel-vr'),
+
+      pidStatusBadge: this.domElement.querySelector('#pid-status-badge'),
+      pidTargetHeading: this.domElement.querySelector('#pid-target-heading'),
+      pidActualHeading: this.domElement.querySelector('#pid-actual-heading'),
+      pidHeadingError: this.domElement.querySelector('#pid-heading-error'),
+      pidOutput: this.domElement.querySelector('#pid-output'),
 
       ballPosX: this.domElement.querySelector('#ball-pos-x'),
       ballPosY: this.domElement.querySelector('#ball-pos-y'),
       ballPosZ: this.domElement.querySelector('#ball-pos-z'),
       ballSpeed: this.domElement.querySelector('#ball-speed'),
       ballVy: this.domElement.querySelector('#ball-vy'),
-      ballBadge: this.domElement.querySelector('#ball-flight-badge'),
-
-      physBodies: this.domElement.querySelector('#phys-bodies'),
-      physColliders: this.domElement.querySelector('#phys-colliders')
+      ballBadge: this.domElement.querySelector('#ball-flight-badge')
     };
+  }
+
+  /**
+   * Binds mouse/touch events to interactive teleoperation pad buttons.
+   */
+  bindTeleopControls() {
+    const bindBtn = (id, action) => {
+      const btn = this.domElement.querySelector(id);
+      if (!btn) return;
+
+      const onPress = (e) => {
+        e.preventDefault();
+        if (this.simulation.robot) {
+          this.simulation.robot.inputController.setUiAction(action, true);
+        }
+      };
+
+      const onRelease = (e) => {
+        e.preventDefault();
+        if (this.simulation.robot) {
+          this.simulation.robot.inputController.setUiAction(action, false);
+        }
+      };
+
+      btn.addEventListener('mousedown', onPress);
+      btn.addEventListener('mouseup', onRelease);
+      btn.addEventListener('mouseleave', onRelease);
+      btn.addEventListener('touchstart', onPress, { passive: false });
+      btn.addEventListener('touchend', onRelease, { passive: false });
+    };
+
+    bindBtn('#btn-teleop-fwd', 'forward');
+    bindBtn('#btn-teleop-rev', 'reverse');
+    bindBtn('#btn-teleop-left', 'left');
+    bindBtn('#btn-teleop-right', 'right');
+    bindBtn('#btn-teleop-estop', 'estop');
+
+    // Heading preset buttons
+    const presetButtons = this.domElement.querySelectorAll('.btn-preset-mini');
+    presetButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetDeg = parseFloat(btn.dataset.heading);
+        const targetRad = (targetDeg * Math.PI) / 180;
+        if (this.simulation.robot) {
+          this.simulation.robot.driveController.setTargetHeading(targetRad, 0.0);
+        }
+      });
+    });
   }
 
   /**
@@ -264,13 +373,44 @@ export class Dashboard {
     this.nodes.simSteps.textContent = `#${data.stepCount}`;
     this.nodes.fps.textContent = `${data.fps}`;
 
-    // Robot metrics
-    this.nodes.botPosX.textContent = `${data.robot.x.toFixed(2)} m`;
-    this.nodes.botPosY.textContent = `${data.robot.y.toFixed(2)} m`;
-    this.nodes.botPosZ.textContent = `${data.robot.z.toFixed(2)} m`;
-    this.nodes.botHeading.textContent = `${data.robot.headingDeg.toFixed(1)}°`;
-    this.nodes.botSpeed.textContent = `${data.robot.speed.toFixed(2)} m/s`;
-    this.nodes.botHoopDist.textContent = `${data.robot.distToHoop.toFixed(2)} m`;
+    // Robot pose and dynamics
+    const r = data.robot;
+    this.nodes.botPosX.textContent = `${r.x.toFixed(2)} m`;
+    this.nodes.botPosZ.textContent = `${r.z.toFixed(2)} m`;
+    this.nodes.botHeading.textContent = `${r.headingDeg.toFixed(1)}° (${r.headingRad.toFixed(2)} rad)`;
+    this.nodes.botSpeed.textContent = `${r.speed.toFixed(2)} m/s`;
+    this.nodes.botAngvel.textContent = `${r.angularVelocity.toFixed(2)} rad/s`;
+    this.nodes.botHoopDist.textContent = `${r.distToHoop.toFixed(2)} m`;
+
+    // Movement state badge
+    this.nodes.botMovementBadge.textContent = r.movementState;
+    if (r.movementState === 'E_STOP') {
+      this.nodes.botMovementBadge.className = 'badge badge-red';
+    } else if (r.movementState === 'STOPPED') {
+      this.nodes.botMovementBadge.className = 'badge badge-slate';
+    } else {
+      this.nodes.botMovementBadge.className = 'badge badge-cyan';
+    }
+
+    // Wheel telemetry
+    this.nodes.driveModeBadge.textContent = r.mode;
+    this.nodes.wheelRpmLeft.textContent = `${r.rpmLeft.toFixed(1)} RPM`;
+    this.nodes.wheelRpmRight.textContent = `${r.rpmRight.toFixed(1)} RPM`;
+    this.nodes.wheelVl.textContent = `${r.vLeft.toFixed(2)} m/s`;
+    this.nodes.wheelVr.textContent = `${r.vRight.toFixed(2)} m/s`;
+
+    // Heading PID telemetry
+    if (r.mode === 'HEADING_HOLD') {
+      this.nodes.pidStatusBadge.textContent = 'ACTIVE';
+      this.nodes.pidStatusBadge.className = 'badge badge-cyan';
+    } else {
+      this.nodes.pidStatusBadge.textContent = 'STANDBY';
+      this.nodes.pidStatusBadge.className = 'badge badge-slate';
+    }
+    this.nodes.pidTargetHeading.textContent = `${r.targetHeadingDeg.toFixed(1)}°`;
+    this.nodes.pidActualHeading.textContent = `${r.headingDeg.toFixed(1)}°`;
+    this.nodes.pidHeadingError.textContent = `${r.headingErrorDeg.toFixed(1)}°`;
+    this.nodes.pidOutput.textContent = `${r.pidOutput.toFixed(2)} rad/s`;
 
     // Basketball metrics
     this.nodes.ballPosX.textContent = `${data.ball.x.toFixed(2)} m`;
@@ -289,10 +429,6 @@ export class Dashboard {
       this.nodes.ballBadge.textContent = 'RESTING';
       this.nodes.ballBadge.className = 'badge badge-slate';
     }
-
-    // Physics core
-    this.nodes.physBodies.textContent = `${data.activeBodies}`;
-    this.nodes.physColliders.textContent = `${data.activeColliders}`;
   }
 
   /**

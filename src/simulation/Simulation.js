@@ -80,7 +80,7 @@ export class Simulation {
     this.hoopWest = new BasketballHoop(this.scene, this.physicsWorld, -1);
 
     // Entities
-    this.robot = new Robot(this.scene, this.physicsWorld);
+    this.robot = new Robot(this.scene, this.physicsWorld, () => this.isRunning);
     this.basketball = new Basketball(this.scene, this.physicsWorld);
 
     // Event listeners
@@ -191,6 +191,7 @@ export class Simulation {
     const robotPos = this.robot ? this.robot.getPosition() : { x: 0, y: 0, z: 0 };
     const robotHeading = this.robot ? this.robot.getHeading() : 0;
     const robotVel = this.robot ? this.robot.getVelocity() : { x: 0, y: 0, z: 0 };
+    const driveTel = this.robot ? this.robot.getDriveTelemetry() : {};
 
     // Distance to East (Target) Hoop rim
     const targetRimX = SIMULATION_CONFIG.court.length / 2 - SIMULATION_CONFIG.court.basketCenterOverhang;
@@ -217,9 +218,25 @@ export class Simulation {
         x: robotPos.x,
         y: robotPos.y,
         z: robotPos.z,
+        headingRad: robotHeading,
         headingDeg: (robotHeading * 180 / Math.PI),
         speed: Math.hypot(robotVel.x, robotVel.z),
-        distToHoop: distToHoop
+        angularVelocity: this.robot ? this.robot.getAngularVelocity().y : 0,
+        distToHoop: distToHoop,
+        // Differential drive & kinematics telemetry
+        mode: driveTel.mode || 'STOPPED',
+        movementState: driveTel.movementState || 'STOPPED',
+        vLeft: driveTel.vLeft || 0,
+        vRight: driveTel.vRight || 0,
+        omegaLeft: driveTel.omegaLeft || 0,
+        omegaRight: driveTel.omegaRight || 0,
+        rpmLeft: driveTel.rpmLeft || 0,
+        rpmRight: driveTel.rpmRight || 0,
+        targetLinearVelocity: driveTel.targetLinearVelocity || 0,
+        targetAngularVelocity: driveTel.targetAngularVelocity || 0,
+        targetHeadingDeg: driveTel.targetHeadingDeg || 0,
+        headingErrorDeg: driveTel.headingErrorDeg || 0,
+        pidOutput: driveTel.pidOutput || 0
       }
     };
 
@@ -372,6 +389,7 @@ export class Simulation {
         this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
       }
     }
+    if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
   }
 }
