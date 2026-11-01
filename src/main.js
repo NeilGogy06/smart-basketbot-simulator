@@ -1,60 +1,88 @@
-import './style.css'
-import heroImg from './assets/hero.png'
-import javascriptLogo from './assets/javascript.svg'
-import viteLogo from './assets/vite.svg'
-import { setupCounter } from './counter.js'
+/**
+ * main.js
+ * Application entry point for SMART-BASKETBOT Simulator.
+ * Bootstraps the 3D graphics viewport, Rapier physics engine, dashboard HUD,
+ * and simulation controls.
+ */
 
-document.querySelector('#app').innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${javascriptLogo}" class="framework" alt="JavaScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.js</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+import './style.css';
+import { Simulation } from './simulation/Simulation.js';
+import { Dashboard } from './ui/Dashboard.js';
+import { Controls } from './ui/Controls.js';
 
-<div class="ticks"></div>
+async function bootstrap() {
+  const appElement = document.getElementById('app');
+  const viewportElement = document.getElementById('viewport');
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://developer.mozilla.org/en-US/docs/Web/JavaScript" target="_blank">
-          <img class="button-icon" src="${javascriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+  if (!appElement || !viewportElement) {
+    console.error('Fatal: Missing root elements #app or #viewport');
+    return;
+  }
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+  // Display initial loading indicator
+  const loadingOverlay = document.createElement('div');
+  loadingOverlay.id = 'loading-overlay';
+  loadingOverlay.innerHTML = `
+    <div style="
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #0a0e14;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 1000; color: #f8fafc; font-family: sans-serif;
+      transition: opacity 0.4s ease;
+    ">
+      <div style="
+        width: 48px; height: 48px; border: 3px solid rgba(56, 189, 248, 0.2);
+        border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite;
+        margin-bottom: 16px;
+      "></div>
+      <div style="font-weight: 700; font-size: 1.1rem; letter-spacing: 0.1em; color: #ffffff;">SMART-BASKETBOT</div>
+      <div style="font-size: 0.8rem; color: #94a3b8; margin-top: 6px;">Initializing 3D Environment & Physics Core...</div>
+      <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+    </div>
+  `;
+  document.body.appendChild(loadingOverlay);
 
-setupCounter(document.querySelector('#counter'))
+  try {
+    // 1. Initialize 3D Simulation & Rapier Physics
+    const simulation = new Simulation(viewportElement);
+    await simulation.initialize();
+
+    // 2. Initialize Telemetry Dashboard
+    const dashboard = new Dashboard(appElement, simulation);
+
+    // 3. Initialize Interactive Controls Toolbar
+    new Controls(dashboard.getControlsSlot(), simulation);
+
+    // Fade out and remove loading overlay
+    loadingOverlay.style.opacity = '0';
+    setTimeout(() => {
+      if (loadingOverlay.parentNode) {
+        loadingOverlay.parentNode.removeChild(loadingOverlay);
+      }
+    }, 400);
+
+    // Expose simulation on window for engineering debugging
+    window.__SIMULATION__ = simulation;
+
+  } catch (error) {
+    console.error('[SMART-BASKETBOT] Initialization failed:', error);
+    loadingOverlay.innerHTML = `
+      <div style="
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        background: #0a0e14; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        z-index: 1000; color: #ef4444; font-family: monospace; padding: 24px; text-align: center;
+      ">
+        <h2 style="margin-bottom: 12px;">Simulation Initialization Error</h2>
+        <p style="color: #cbd5e1; max-width: 600px; font-size: 0.85rem;">${error.message}</p>
+      </div>
+    `;
+  }
+}
+
+// Bootstrap on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  bootstrap();
+}
