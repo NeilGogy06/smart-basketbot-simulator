@@ -20,6 +20,7 @@ export class Dashboard {
     this.render();
     this.bindTeleopControls();
     this.bindNavigationControls();
+    this.bindShooterAndIntakeControls();
     this.subscribeTelemetry();
   }
 
@@ -68,6 +69,59 @@ export class Dashboard {
 
       <!-- SIDEBAR TELEMETRY PANELS -->
       <aside class="sim-telemetry-panel">
+
+        <!-- AUTONOMOUS SHOOTER SUITE -->
+        <div class="telemetry-card card-auto-shooter">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              <span>AUTONOMOUS SHOOTER</span>
+            </div>
+            <span class="badge badge-slate" id="workflow-stage-badge">IDLE</span>
+          </div>
+          <div class="nav-status-banner font-mono text-amber" id="workflow-status-msg" style="margin-bottom: 8px;">
+            Autonomous workflow ready.
+          </div>
+          <div class="nav-action-row">
+            <button class="btn btn-accent btn-nav-action" id="btn-workflow-start" title="Run full autonomous acquire, navigate, align, spin up and shoot sequence">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <span>Acquire & Shoot</span>
+            </button>
+            <button class="btn btn-danger btn-nav-action" id="btn-workflow-cancel" title="Abort sequence">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              <span>Abort</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SHOT PERFORMANCE STATISTICS -->
+        <div class="telemetry-card card-shot-stats">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4" fill="currentColor"></circle></svg>
+              <span>SHOT PERFORMANCE</span>
+            </div>
+            <span class="badge badge-slate" id="shot-result-badge">NO SHOTS</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Attempts</span>
+              <span class="grid-value font-mono" id="stat-attempts">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Baskets Scored</span>
+              <span class="grid-value font-mono text-success" id="stat-scored">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Missed</span>
+              <span class="grid-value font-mono text-danger" id="stat-missed">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Accuracy %</span>
+              <span class="grid-value font-mono text-cyan" id="stat-accuracy">0.0%</span>
+            </div>
+          </div>
+        </div>
 
         <!-- AUTONOMOUS NAVIGATION (A*) -->
         <div class="telemetry-card card-nav">
@@ -154,6 +208,88 @@ export class Dashboard {
             Ready for destination selection.
           </div>
           <div class="court-click-hint">Tip: Click anywhere on 3D court to set destination</div>
+        </div>
+
+        <!-- BASKETBALL INTAKE & CONTAINMENT -->
+        <div class="telemetry-card card-intake">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6m-6 4h6m-6-8h16M4 6h16M14 14l3-3 3 3M17 11v8"/></svg>
+              <span>INTAKE & CONTAINMENT</span>
+            </div>
+            <span class="badge badge-slate" id="intake-status-badge">IDLE</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Ball Possession</span>
+              <span class="grid-value font-mono text-amber" id="txt-ball-possession">FIELD</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Optical Beam</span>
+              <span class="grid-value font-mono" id="txt-optical-sensor">CLEAR</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Roller State</span>
+              <span class="grid-value font-mono" id="txt-roller-state">STOPPED</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Roller RPM</span>
+              <span class="grid-value font-mono text-cyan" id="txt-roller-rpm">0.0 RPM</span>
+            </div>
+          </div>
+          <div class="nav-action-row" style="margin-top: 8px;">
+            <button class="btn btn-primary btn-nav-action" id="btn-intake-toggle" title="Toggle front intake rollers (I)">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-8-8z"/></svg>
+              <span id="lbl-intake-btn">Start Intake</span>
+            </button>
+            <button class="btn btn-subtle btn-nav-action" id="btn-intake-reject" title="Reject / eject ball forward">
+              <span>Reject</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- FLYWHEEL SHOOTER & BALLISTICS -->
+        <div class="telemetry-card card-shooter">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v6m0 6v6M3 12h6m6 0h6"></path></svg>
+              <span>FLYWHEEL SHOOTER</span>
+            </div>
+            <span class="badge badge-slate" id="shooter-status-badge">IDLE</span>
+          </div>
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Flywheel RPM</span>
+              <span class="grid-value font-mono text-cyan" id="txt-flywheel-rpm">0.0 RPM</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Target Speed</span>
+              <span class="grid-value font-mono" id="txt-target-speed">8.5 m/s</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Elevation Angle</span>
+              <span class="grid-value font-mono text-amber" id="txt-elevation-angle">52.0°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Apex Height</span>
+              <span class="grid-value font-mono" id="txt-calc-apex">~4.1 m</span>
+            </div>
+          </div>
+          <div style="margin: 8px 0 4px 0; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--text-secondary);">
+            <span>Elevation Angle (35° - 75°):</span>
+            <span class="font-mono text-cyan" id="lbl-slider-angle">52°</span>
+          </div>
+          <input type="range" id="slider-elevation-angle" min="35" max="75" step="1" value="52" style="width: 100%; accent-color: var(--accent-cyan); cursor: pointer; margin-bottom: 8px;">
+          <div class="nav-action-row">
+            <button class="btn btn-secondary btn-nav-action" id="btn-shooter-spinup" title="Spin up flywheels to target speed">
+              <span>Spin Up</span>
+            </button>
+            <button class="btn btn-primary btn-nav-action" id="btn-shooter-fire" title="Launch basketball into Rapier physics (F)">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <span>Fire Shot</span>
+            </button>
+          </div>
+          <div class="nav-status-banner font-mono text-danger" id="txt-shooter-msg" style="margin-top: 6px; font-size: 0.72rem; display: none;"></div>
         </div>
 
         <!-- ROBOT POSE & DYNAMICS -->
@@ -323,6 +459,8 @@ export class Dashboard {
           <div class="shortcuts-grid">
             <div><kbd>W / S</kbd> Drive Fwd / Rev</div>
             <div><kbd>A / D</kbd> Rotate Left / Right</div>
+            <div><kbd>I</kbd> Toggle Intake</div>
+            <div><kbd>F</kbd> Fire Shooter</div>
             <div><kbd>Space</kbd> Robot E-STOP</div>
             <div><kbd>P</kbd> Play / Pause Sim</div>
             <div><kbd>R</kbd> Reset Sim</div>
@@ -346,6 +484,35 @@ export class Dashboard {
       simTime: this.domElement.querySelector('#txt-sim-time'),
       simSteps: this.domElement.querySelector('#txt-sim-steps'),
       fps: this.domElement.querySelector('#txt-fps'),
+
+      // Autonomous Shooter Workflow nodes
+      workflowStageBadge: this.domElement.querySelector('#workflow-stage-badge'),
+      workflowStatusMsg: this.domElement.querySelector('#workflow-status-msg'),
+
+      // Shot Performance Statistics
+      shotResultBadge: this.domElement.querySelector('#shot-result-badge'),
+      statAttempts: this.domElement.querySelector('#stat-attempts'),
+      statScored: this.domElement.querySelector('#stat-scored'),
+      statMissed: this.domElement.querySelector('#stat-missed'),
+      statAccuracy: this.domElement.querySelector('#stat-accuracy'),
+
+      // Intake and containment nodes
+      intakeStatusBadge: this.domElement.querySelector('#intake-status-badge'),
+      txtBallPossession: this.domElement.querySelector('#txt-ball-possession'),
+      txtOpticalSensor: this.domElement.querySelector('#txt-optical-sensor'),
+      txtRollerState: this.domElement.querySelector('#txt-roller-state'),
+      txtRollerRpm: this.domElement.querySelector('#txt-roller-rpm'),
+      lblIntakeBtn: this.domElement.querySelector('#lbl-intake-btn'),
+
+      // Flywheel shooter nodes
+      shooterStatusBadge: this.domElement.querySelector('#shooter-status-badge'),
+      txtFlywheelRpm: this.domElement.querySelector('#txt-flywheel-rpm'),
+      txtTargetSpeed: this.domElement.querySelector('#txt-target-speed'),
+      txtElevationAngle: this.domElement.querySelector('#txt-elevation-angle'),
+      txtCalcApex: this.domElement.querySelector('#txt-calc-apex'),
+      sliderElevationAngle: this.domElement.querySelector('#slider-elevation-angle'),
+      lblSliderAngle: this.domElement.querySelector('#lbl-slider-angle'),
+      txtShooterMsg: this.domElement.querySelector('#txt-shooter-msg'),
 
       // Navigation nodes
       navStatusBadge: this.domElement.querySelector('#nav-status-badge'),
@@ -517,6 +684,73 @@ export class Dashboard {
   }
 
   /**
+   * Binds intake, flywheel shooter, and autonomous shooting workflow UI buttons and sliders.
+   */
+  bindShooterAndIntakeControls() {
+    // Autonomous Shooter Workflow Controls
+    const btnWorkflowStart = this.domElement.querySelector('#btn-workflow-start');
+    const btnWorkflowCancel = this.domElement.querySelector('#btn-workflow-cancel');
+
+    if (btnWorkflowStart) {
+      btnWorkflowStart.addEventListener('click', () => {
+        this.simulation.startAutonomousShootingSequence();
+      });
+    }
+
+    if (btnWorkflowCancel) {
+      btnWorkflowCancel.addEventListener('click', () => {
+        this.simulation.cancelAutonomousShootingSequence();
+      });
+    }
+
+    // Intake Controls
+    const btnIntakeToggle = this.domElement.querySelector('#btn-intake-toggle');
+    const btnIntakeReject = this.domElement.querySelector('#btn-intake-reject');
+
+    if (btnIntakeToggle) {
+      btnIntakeToggle.addEventListener('click', () => {
+        this.simulation.toggleIntake();
+      });
+    }
+
+    if (btnIntakeReject) {
+      btnIntakeReject.addEventListener('click', () => {
+        this.simulation.rejectBall();
+      });
+    }
+
+    // Flywheel Shooter Controls
+    const sliderAngle = this.domElement.querySelector('#slider-elevation-angle');
+    const lblAngle = this.domElement.querySelector('#lbl-slider-angle');
+    const btnSpinup = this.domElement.querySelector('#btn-shooter-spinup');
+    const btnFire = this.domElement.querySelector('#btn-shooter-fire');
+
+    if (sliderAngle) {
+      sliderAngle.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (lblAngle) lblAngle.textContent = `${val}°`;
+        if (this.simulation.robot && this.simulation.robot.shooter) {
+          this.simulation.robot.shooter.setLaunchAngle(val);
+        }
+      });
+    }
+
+    if (btnSpinup) {
+      btnSpinup.addEventListener('click', () => {
+        if (this.simulation.robot && this.simulation.robot.shooter) {
+          this.simulation.robot.shooter.prepareShotAtHoop(this.simulation.robot);
+        }
+      });
+    }
+
+    if (btnFire) {
+      btnFire.addEventListener('click', () => {
+        this.simulation.fireShooter();
+      });
+    }
+  }
+
+  /**
    * Subscribes to real-time simulation updates.
    */
   subscribeTelemetry() {
@@ -545,6 +779,130 @@ export class Dashboard {
     this.nodes.fps.textContent = `${data.fps}`;
 
     const r = data.robot;
+
+    // Autonomous Shooter Workflow telemetry
+    if (data.shooterWorkflow && this.nodes.workflowStageBadge) {
+      const wf = data.shooterWorkflow;
+      this.nodes.workflowStageBadge.textContent = wf.stage || 'IDLE';
+      if (wf.stage === 'COMPLETED') {
+        this.nodes.workflowStageBadge.className = 'badge badge-green';
+      } else if (wf.isActive) {
+        this.nodes.workflowStageBadge.className = 'badge badge-cyan';
+      } else if (wf.stage === 'CANCELLED' || wf.stage === 'FAILED') {
+        this.nodes.workflowStageBadge.className = 'badge badge-red';
+      } else {
+        this.nodes.workflowStageBadge.className = 'badge badge-slate';
+      }
+      if (this.nodes.workflowStatusMsg) {
+        this.nodes.workflowStatusMsg.textContent = wf.statusMessage || '';
+      }
+    }
+
+    // Shot Performance Statistics
+    if (data.shotStats && this.nodes.statAttempts) {
+      const st = data.shotStats;
+      this.nodes.statAttempts.textContent = `${st.totalAttempts || 0}`;
+      this.nodes.statScored.textContent = `${st.successfulBaskets || 0}`;
+      this.nodes.statMissed.textContent = `${st.missedShots || 0}`;
+      this.nodes.statAccuracy.textContent = `${(st.accuracyPercent || 0).toFixed(1)}%`;
+      if (this.nodes.shotResultBadge) {
+        this.nodes.shotResultBadge.textContent = st.lastShotResult || 'NO SHOTS';
+        if (st.lastShotResult === 'SCORED') {
+          this.nodes.shotResultBadge.className = 'badge badge-green';
+        } else if (st.lastShotResult === 'MISSED') {
+          this.nodes.shotResultBadge.className = 'badge badge-red';
+        } else if (st.lastShotResult === 'IN_FLIGHT') {
+          this.nodes.shotResultBadge.className = 'badge badge-cyan';
+        } else {
+          this.nodes.shotResultBadge.className = 'badge badge-slate';
+        }
+      }
+    }
+
+    // Intake & Ball Possession telemetry
+    if (r.intake && this.nodes.intakeStatusBadge) {
+      const it = r.intake;
+      this.nodes.intakeStatusBadge.textContent = it.state || 'IDLE';
+      if (it.state === 'BALL_CAPTURED') {
+        this.nodes.intakeStatusBadge.className = 'badge badge-green';
+      } else if (it.state === 'INTAKING') {
+        this.nodes.intakeStatusBadge.className = 'badge badge-cyan';
+      } else if (it.state === 'REJECTING') {
+        this.nodes.intakeStatusBadge.className = 'badge badge-amber';
+      } else {
+        this.nodes.intakeStatusBadge.className = 'badge badge-slate';
+      }
+
+      if (this.nodes.txtBallPossession) {
+        this.nodes.txtBallPossession.textContent = it.ballState || 'FIELD';
+        if (it.ballState === 'CAPTURED') {
+          this.nodes.txtBallPossession.className = 'grid-value font-mono text-success';
+        } else if (it.ballState === 'IN_FLIGHT') {
+          this.nodes.txtBallPossession.className = 'grid-value font-mono text-cyan';
+        } else {
+          this.nodes.txtBallPossession.className = 'grid-value font-mono text-amber';
+        }
+      }
+
+      if (this.nodes.txtOpticalSensor) {
+        this.nodes.txtOpticalSensor.textContent = it.opticalSensorActive ? 'ACTIVE (BALL DETECTED)' : 'CLEAR (BEAM INTACT)';
+        this.nodes.txtOpticalSensor.className = it.opticalSensorActive ? 'grid-value font-mono text-success' : 'grid-value font-mono text-muted';
+      }
+
+      if (this.nodes.txtRollerState) {
+        this.nodes.txtRollerState.textContent = it.state === 'INTAKING' ? 'INTAKING' : (it.state === 'REJECTING' ? 'REJECTING' : 'STOPPED');
+      }
+
+      if (this.nodes.txtRollerRpm) {
+        this.nodes.txtRollerRpm.textContent = `${(it.rollerSpeedRpm || 0).toFixed(1)} RPM`;
+      }
+
+      if (this.nodes.lblIntakeBtn) {
+        this.nodes.lblIntakeBtn.textContent = it.state === 'INTAKING' ? 'Stop Intake' : 'Start Intake';
+      }
+    }
+
+    // Flywheel Shooter telemetry
+    if (r.shooter && this.nodes.shooterStatusBadge) {
+      const sh = r.shooter;
+      this.nodes.shooterStatusBadge.textContent = sh.state || 'IDLE';
+      if (sh.state === 'READY') {
+        this.nodes.shooterStatusBadge.className = 'badge badge-green';
+      } else if (sh.state === 'SPINNING_UP') {
+        this.nodes.shooterStatusBadge.className = 'badge badge-cyan';
+      } else if (sh.state === 'FIRING') {
+        this.nodes.shooterStatusBadge.className = 'badge badge-amber';
+      } else {
+        this.nodes.shooterStatusBadge.className = 'badge badge-slate';
+      }
+
+      if (this.nodes.txtFlywheelRpm) {
+        this.nodes.txtFlywheelRpm.textContent = `${(sh.flywheelRpm || 0).toFixed(1)} RPM`;
+      }
+      if (this.nodes.txtTargetSpeed) {
+        this.nodes.txtTargetSpeed.textContent = `${(sh.targetLaunchSpeed || 8.5).toFixed(2)} m/s`;
+      }
+      if (this.nodes.txtElevationAngle) {
+        this.nodes.txtElevationAngle.textContent = `${(sh.launchAngleDeg || 52).toFixed(1)}°`;
+      }
+
+      // Ballistic apex height estimate
+      if (this.nodes.txtCalcApex) {
+        const theta = ((sh.launchAngleDeg || 52) * Math.PI) / 180;
+        const v0 = sh.targetLaunchSpeed || 8.5;
+        const apex = r.y + 0.45 + (v0 * Math.sin(theta) * v0 * Math.sin(theta)) / (2 * 9.81);
+        this.nodes.txtCalcApex.textContent = `${apex.toFixed(2)} m`;
+      }
+
+      if (this.nodes.txtShooterMsg) {
+        if (sh.lastRejectReason) {
+          this.nodes.txtShooterMsg.style.display = 'block';
+          this.nodes.txtShooterMsg.textContent = sh.lastRejectReason;
+        } else {
+          this.nodes.txtShooterMsg.style.display = 'none';
+        }
+      }
+    }
 
     // Navigation telemetry
     if (r.navigation) {

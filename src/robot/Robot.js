@@ -17,6 +17,8 @@ import { SIMULATION_CONFIG } from '../simulation/SimulationConfig.js';
 import { DifferentialDriveController } from './DifferentialDriveController.js';
 import { RobotInputController } from './RobotInputController.js';
 import { AutonomousNavController } from '../navigation/AutonomousNavController.js';
+import { IntakeMechanism } from './IntakeMechanism.js';
+import { ShootingMechanism } from './ShootingMechanism.js';
 
 export class Robot {
   /**
@@ -63,10 +65,18 @@ export class Robot {
     // Autonomous navigation subsystem
     this.navController = new AutonomousNavController({ driveController: this.driveController });
 
+    // Intake and Shooting Subsystems
+    this.intake = new IntakeMechanism();
+    this.shooter = new ShootingMechanism();
+
     // Component references for visual animation
     this.leftWheel = null;
     this.rightWheel = null;
     this.intakeRoller = null;
+    this.leftFlywheel = null;
+    this.rightFlywheel = null;
+    this.shooterGroup = null;
+    this.opticalSensorLed = null;
     this.lidarPuck = null;
     this.statusLed = null;
 
@@ -263,7 +273,7 @@ export class Robot {
     estopBase.position.set(-0.16, deck.position.y + 0.015, -0.16);
     this.group.add(estopBase);
 
-    // 5. Front Basketball Intake Area
+    // 5. Front Basketball Intake Area & Containment Cradle
     const intakeGroup = new THREE.Group();
     intakeGroup.position.set(c.length / 2 - 0.05, c.groundClearance + 0.06, 0);
 
@@ -273,13 +283,13 @@ export class Robot {
     ramp.position.set(0.06, 0.01, 0);
     intakeGroup.add(ramp);
 
-    const rollerShaftGeom = new THREE.CylinderGeometry(0.01, 0.01, this.config.intake.width, 12);
+    const rollerShaftGeom = new THREE.CylinderGeometry(0.012, 0.012, this.config.intake.width, 12);
     const rollerShaft = new THREE.Mesh(rollerShaftGeom, aluminumMat);
     rollerShaft.rotation.x = Math.PI / 2;
     rollerShaft.position.set(0.16, 0.06, 0);
 
     for (let rz = -0.16; rz <= 0.16; rz += 0.08) {
-      const ringGeom = new THREE.CylinderGeometry(this.config.intake.rollerRadius, this.config.intake.rollerRadius, 0.03, 16);
+      const ringGeom = new THREE.CylinderGeometry(this.config.intake.rollerRadius, this.config.intake.rollerRadius, 0.035, 16);
       const ring = new THREE.Mesh(ringGeom, accentOrangeMat);
       ring.position.set(0, rz, 0);
       rollerShaft.add(ring);
@@ -288,26 +298,69 @@ export class Robot {
     this.intakeRoller = rollerShaft;
     this.group.add(intakeGroup);
 
-    // 6. Placeholder Shooting Mechanism
+    // Ball Containment Hopper Cradle (curved retaining rails)
+    const cradleGroup = new THREE.Group();
+    const cradleRailGeom = new THREE.BoxGeometry(0.28, 0.02, 0.02);
+    const leftRail = new THREE.Mesh(cradleRailGeom, aluminumMat);
+    leftRail.position.set(0.08, c.groundClearance + 0.18, 0.16);
+    cradleGroup.add(leftRail);
+
+    const rightRail = new THREE.Mesh(cradleRailGeom, aluminumMat);
+    rightRail.position.set(0.08, c.groundClearance + 0.18, -0.16);
+    cradleGroup.add(rightRail);
+
+    // Optical Beam-Break Sensor LED in cradle
+    const optSensorGeom = new THREE.SphereGeometry(0.014, 12, 8);
+    const optSensorMat = new THREE.MeshStandardMaterial({
+      color: 0xef4444, // Red = clear; Green = ball present
+      emissive: 0xef4444,
+      emissiveIntensity: 0.8
+    });
+    const optSensorLed = new THREE.Mesh(optSensorGeom, optSensorMat);
+    optSensorLed.position.set(0.08, c.groundClearance + 0.20, 0.16);
+    cradleGroup.add(optSensorLed);
+    this.opticalSensorLed = optSensorLed;
+    this.group.add(cradleGroup);
+
+    // 6. Dual-Flywheel Shooting Mechanism
     const shooterGroup = new THREE.Group();
     shooterGroup.position.set(0.02, deck.position.y + 0.12, 0);
-    shooterGroup.rotation.z = -this.config.shooter.elevationAngleDeg * (Math.PI / 180);
+    shooterGroup.rotation.z = -this.shooter.launchAngleDeg * (Math.PI / 180);
 
     const railGeom = new THREE.BoxGeometry(this.config.shooter.barrelLength, 0.03, 0.28);
     const rails = new THREE.Mesh(railGeom, aluminumMat);
     shooterGroup.add(rails);
 
+    // Helper for flywheel with visible rotation markers
     const flywheelGeom = new THREE.CylinderGeometry(0.075, 0.075, 0.035, 20);
-    const leftFlywheel = new THREE.Mesh(flywheelGeom, rimMat);
-    leftFlywheel.position.set(0.12, 0.06, 0.15);
-    leftFlywheel.rotation.x = Math.PI / 2;
-    shooterGroup.add(leftFlywheel);
+    const buildFlywheelMesh = (posZ) => {
+      const fwGroup = new THREE.Group();
+      fwGroup.position.set(0.12, 0.06, posZ);
 
-    const rightFlywheel = new THREE.Mesh(flywheelGeom, rimMat);
-    rightFlywheel.position.set(0.12, 0.06, -0.15);
-    rightFlywheel.rotation.x = Math.PI / 2;
-    shooterGroup.add(rightFlywheel);
+      const fw = new THREE.Mesh(flywheelGeom, rimMat);
+      fw.rotation.x = Math.PI / 2;
+      fwGroup.add(fw);
 
+      // Contrast markers for spin visibility
+      for (let i = 0; i < 4; i++) {
+        const ang = (i * Math.PI) / 2;
+        const mark = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.065, 0.038), spokeMarkerMat);
+        mark.position.set(Math.cos(ang) * 0.035, Math.sin(ang) * 0.035, 0);
+        mark.rotation.z = ang;
+        fwGroup.add(mark);
+      }
+      return fwGroup;
+    };
+
+    const leftFlywheelGroup = buildFlywheelMesh(0.15);
+    shooterGroup.add(leftFlywheelGroup);
+    this.leftFlywheel = leftFlywheelGroup;
+
+    const rightFlywheelGroup = buildFlywheelMesh(-0.15);
+    shooterGroup.add(rightFlywheelGroup);
+    this.rightFlywheel = rightFlywheelGroup;
+
+    this.shooterGroup = shooterGroup;
     this.group.add(shooterGroup);
 
     // 7. Sensor Mast & Vision Cameras
@@ -399,12 +452,17 @@ export class Robot {
 
   /**
    * Updates robot kinematics, applies actuator velocities to Rapier body,
-   * spins visual wheel meshes, and animates sensor mast.
+   * spins visual wheel meshes, updates intake/shooter subsystems, and animates sensors.
    * @param {number} deltaTime Frame time step in seconds
-   * @param {{ x: number, z: number } | null} [ballPose]
+   * @param {{ x: number, z: number } | Object | null} [ballPose]
+   * @param {Object} [basketball]
    */
-  update(deltaTime, ballPose = null) {
+  update(deltaTime, ballPose = null, basketball = null) {
     if (!this.rigidBody) return;
+
+    // Detect if basketball object was passed as 2nd or 3rd parameter
+    const basketballObj = basketball || (ballPose && typeof ballPose.getSpeed === 'function' ? ballPose : null);
+    const ballCoords = ballPose && typeof ballPose.getSpeed === 'function' ? ballPose.getPosition() : ballPose;
 
     // 1. Query current physics state
     const currentHeading = this.getHeading();
@@ -413,7 +471,8 @@ export class Robot {
 
     // 2. Step autonomous navigation guidance if in AUTONOMOUS mode
     if (this.controlMode === 'AUTONOMOUS') {
-      this.navController.update(deltaTime, { x: pos.x, z: pos.z, heading: currentHeading }, ballPose);
+      const ballAsObstacle = (this.intake && this.intake.isBallCaptured) ? null : ballCoords;
+      this.navController.update(deltaTime, { x: pos.x, z: pos.z, heading: currentHeading }, ballAsObstacle);
     }
 
     // 3. Step differential drive controller
@@ -443,7 +502,42 @@ export class Robot {
       this.rightWheel.rotation.z = -this.driveController.wheelAngleRight;
     }
 
-    // 6. Update sensor mast animations (spinning LiDAR puck)
+    // 6. Step intake and shooter subsystems
+    if (basketballObj) {
+      this.intake.update(deltaTime, this, basketballObj);
+    }
+    this.shooter.update(deltaTime);
+
+    // 7. Animate intake roller mesh
+    if (this.intakeRoller) {
+      this.intakeRoller.rotation.x = Math.PI / 2 + this.intake.rollerAngle;
+    }
+
+    // 8. Animate flywheels
+    if (this.leftFlywheel) {
+      this.leftFlywheel.rotation.z = this.shooter.flywheelAngle;
+    }
+    if (this.rightFlywheel) {
+      this.rightFlywheel.rotation.z = -this.shooter.flywheelAngle;
+    }
+
+    // 9. Update optical sensor indicator LED
+    if (this.opticalSensorLed && this.opticalSensorLed.material) {
+      if (this.intake.opticalSensorActive) {
+        this.opticalSensorLed.material.color.setHex(0x10b981); // Green when ball detected
+        this.opticalSensorLed.material.emissive.setHex(0x10b981);
+      } else {
+        this.opticalSensorLed.material.color.setHex(0xef4444); // Red when clear
+        this.opticalSensorLed.material.emissive.setHex(0xef4444);
+      }
+    }
+
+    // 10. Update shooter elevation tilt if dynamically adjusted
+    if (this.shooterGroup) {
+      this.shooterGroup.rotation.z = -this.shooter.launchAngleDeg * (Math.PI / 180);
+    }
+
+    // 11. Update sensor mast animations (spinning LiDAR puck)
     if (this.lidarPuck) {
       this.lidarPuck.rotation.y += deltaTime * 6.0;
     }
@@ -459,6 +553,9 @@ export class Robot {
     this.navController.reset();
     this.driveController.reset();
     this.inputController.resetKeys();
+
+    if (this.intake) this.intake.reset();
+    if (this.shooter) this.shooter.reset();
 
     const halfAngle = headingRad / 2;
     const rotation = {
@@ -562,11 +659,54 @@ export class Robot {
       ...driveTel,
       controlMode: this.controlMode,
       navigation: navTel,
+      intake: this.intake ? this.intake.getTelemetry() : {},
+      shooter: this.shooter ? this.shooter.getTelemetry() : {},
       actualHeadingRad: heading,
       actualHeadingDeg: (heading * 180) / Math.PI,
       actualLinearSpeed: Math.hypot(linvel.x, linvel.z),
       actualAngularSpeed: angvel.y
     };
+  }
+
+  /**
+   * Activates front intake rollers to capture balls.
+   */
+  startIntake() {
+    if (this.intake) this.intake.startIntake();
+  }
+
+  /**
+   * Deactivates front intake rollers.
+   */
+  stopIntake() {
+    if (this.intake) this.intake.stopIntake();
+  }
+
+  /**
+   * Reverses front intake rollers to reject/eject ball.
+   */
+  startReject() {
+    if (this.intake) this.intake.startReject();
+  }
+
+  /**
+   * Prepares launcher for shot at target hoop, computing ballistic trajectory.
+   * @param {{ x: number, y: number, z: number }} [hoopTarget]
+   */
+  prepareShot(hoopTarget) {
+    if (this.shooter) return this.shooter.prepareShotAtHoop(this, hoopTarget);
+    return null;
+  }
+
+  /**
+   * Launches basketball into 3D ballistic trajectory.
+   * @param {Object} basketball
+   * @param {Object} [hoopDetector]
+   * @param {{ x: number, y: number, z: number }} [hoopTarget]
+   */
+  fireShot(basketball, hoopDetector = null, hoopTarget = null) {
+    if (this.shooter) return this.shooter.fire(this, basketball, hoopDetector, hoopTarget || this.shooter.defaultHoopPos);
+    return false;
   }
 
   /**

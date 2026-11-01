@@ -241,6 +241,22 @@ html, body {
   border-color: rgba(56, 189, 248, 0.4);
 }
 
+.card-auto-shooter {
+  border-left: 3px solid var(--accent-amber);
+}
+
+.card-shot-stats {
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.card-intake {
+  border-left: 3px solid #f97316;
+}
+
+.card-shooter {
+  border-left: 3px solid #38bdf8;
+}
+
 .card-header {
   display: flex;
   align-items: center;

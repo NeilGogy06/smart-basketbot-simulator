@@ -15,6 +15,8 @@ import { Lighting } from '../environment/Lighting.js';
 import { Basketball } from '../environment/Basketball.js';
 import { Robot } from '../robot/Robot.js';
 import { PathVisualizer } from '../navigation/PathVisualizer.js';
+import { HoopDetector } from '../robot/HoopDetector.js';
+import { AutonomousShooterWorkflow } from '../navigation/AutonomousShooterWorkflow.js';
 
 export class Simulation {
   /**
@@ -47,6 +49,8 @@ export class Simulation {
     this.lighting = null;
     this.robot = null;
     this.basketball = null;
+    this.hoopDetector = null;
+    this.shooterWorkflow = null;
 
     // Animation frame handle
     this.animationFrameId = null;
@@ -83,6 +87,14 @@ export class Simulation {
     // Entities
     this.robot = new Robot(this.scene, this.physicsWorld, () => this.isRunning);
     this.basketball = new Basketball(this.scene, this.physicsWorld);
+
+    // Basketball scoring detection & autonomous shooter workflow
+    this.hoopDetector = new HoopDetector();
+    this.shooterWorkflow = new AutonomousShooterWorkflow({
+      robot: this.robot,
+      basketball: this.basketball,
+      hoopDetector: this.hoopDetector
+    });
 
     // Autonomous Navigation Path Visualizer
     this.pathVisualizer = new PathVisualizer(this.scene);
@@ -202,8 +214,19 @@ export class Simulation {
 
     // Update entity visuals & autonomous navigation
     const ballPos = this.basketball ? this.basketball.getPosition() : null;
+    const ballVel = this.basketball ? this.basketball.getVelocity() : { x: 0, y: 0, z: 0 };
     if (this.robot) {
-      this.robot.update(deltaTime, ballPos);
+      this.robot.update(deltaTime, ballPos, this.basketball);
+    }
+
+    // Update hoop scoring detector
+    if (this.hoopDetector && ballPos) {
+      this.hoopDetector.update(ballPos, ballVel, deltaTime);
+    }
+
+    // Step autonomous acquisition and shooting workflow
+    if (this.shooterWorkflow) {
+      this.shooterWorkflow.update(deltaTime);
     }
 
     // Update navigation path visualizer
@@ -292,8 +315,12 @@ export class Simulation {
         targetAngularVelocity: driveTel.targetAngularVelocity || 0,
         targetHeadingDeg: driveTel.targetHeadingDeg || 0,
         headingErrorDeg: driveTel.headingErrorDeg || 0,
-        pidOutput: driveTel.pidOutput || 0
-      }
+        pidOutput: driveTel.pidOutput || 0,
+        intake: driveTel.intake || {},
+        shooter: driveTel.shooter || {}
+      },
+      shooterWorkflow: this.shooterWorkflow ? this.shooterWorkflow.getTelemetry() : {},
+      shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {}
     };
 
     for (let i = 0; i < this.telemetryCallbacks.length; i++) {
@@ -349,6 +376,8 @@ export class Simulation {
     }
     this.resetRobot();
     this.resetBall();
+    if (this.hoopDetector) this.hoopDetector.reset();
+    if (this.shooterWorkflow) this.shooterWorkflow.reset();
     if (this.pathVisualizer) this.pathVisualizer.clear();
     console.log('[Simulation] Simulation reset to initial state.');
   }
@@ -368,6 +397,66 @@ export class Simulation {
   resetRobot() {
     if (this.robot) {
       this.robot.reset();
+    }
+  }
+
+  /**
+   * Toggles front intake mechanism on robot.
+   */
+  toggleIntake() {
+    if (!this.robot || !this.robot.intake) return;
+    if (this.robot.intake.state === 'INTAKING') {
+      this.robot.intake.stopIntake();
+    } else {
+      this.robot.intake.startIntake();
+    }
+  }
+
+  /**
+   * Reverses intake to eject ball forward.
+   */
+  rejectBall() {
+    if (this.robot && this.robot.intake) {
+      this.robot.intake.startReject();
+    }
+  }
+
+  /**
+   * Begins flywheel spin-up for basketball launcher.
+   * @param {number} [speed]
+   */
+  spinUpShooter(speed = null) {
+    if (this.robot && this.robot.shooter) {
+      this.robot.shooter.spinUp(speed);
+    }
+  }
+
+  /**
+   * Launches basketball into 3D ballistic trajectory towards target hoop.
+   */
+  fireShooter() {
+    if (this.robot && this.basketball) {
+      return this.robot.fireShot(this.basketball, this.hoopDetector);
+    }
+    return false;
+  }
+
+  /**
+   * Starts end-to-end autonomous ball acquisition and shooting sequence.
+   */
+  startAutonomousShootingSequence() {
+    if (this.shooterWorkflow) {
+      return this.shooterWorkflow.startSequence();
+    }
+    return false;
+  }
+
+  /**
+   * Cancels active autonomous shooting sequence.
+   */
+  cancelAutonomousShootingSequence() {
+    if (this.shooterWorkflow) {
+      this.shooterWorkflow.cancelSequence();
     }
   }
 
@@ -447,6 +536,7 @@ export class Simulation {
       }
     }
     if (this.pathVisualizer) this.pathVisualizer.destroy();
+    if (this.shooterWorkflow) this.shooterWorkflow.reset();
     if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
   }

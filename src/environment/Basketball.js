@@ -33,6 +33,10 @@ export class Basketball {
    * leather pebble grain and regulation black rubber seams.
    */
   createBasketballTextures() {
+    if (typeof document === 'undefined') {
+      return { diffTexture: null, bumpTexture: null };
+    }
+
     const width = 1024;
     const height = 512;
 
@@ -160,6 +164,7 @@ export class Basketball {
 
     const geometry = new THREE.SphereGeometry(this.config.radius, 32, 24);
     const material = new THREE.MeshStandardMaterial({
+      color: 0xe26022,
       map: diffTexture,
       bumpMap: bumpTexture,
       bumpScale: 0.003,

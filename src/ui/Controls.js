@@ -144,6 +144,14 @@ export class Controls {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       switch (e.code) {
+        case 'KeyI':
+          e.preventDefault();
+          this.simulation.toggleIntake();
+          break;
+        case 'KeyF':
+          e.preventDefault();
+          this.simulation.fireShooter();
+          break;
         case 'KeyP':
           e.preventDefault();
           const newState = this.simulation.togglePlayPause();

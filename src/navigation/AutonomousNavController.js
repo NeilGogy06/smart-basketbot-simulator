@@ -63,6 +63,9 @@ export class AutonomousNavController {
     this.state = 'PLANNING';
     this.destination = { x: targetX, z: targetZ };
 
+    // Clear dynamic obstacle cache before initial path generation
+    this.obstacleManager.updateGrid(null);
+
     const plan = this.planner.planPath(
       { x: currentRobotPose.x, z: currentRobotPose.z },
       this.destination
@@ -149,7 +152,16 @@ export class AutonomousNavController {
     this.replanTimer += dt;
     if (this.replanTimer >= this.replanInterval) {
       this.replanTimer = 0;
-      this.obstacleManager.updateGrid(ballPose);
+      // Filter out ball obstacle if ball is near robot or near destination
+      let activeBallObs = ballPose;
+      if (ballPose) {
+        const dBot = Math.hypot(ballPose.x - currentRobotPose.x, ballPose.z - currentRobotPose.z);
+        const dDest = this.destination ? Math.hypot(ballPose.x - this.destination.x, ballPose.z - this.destination.z) : 999;
+        if (dBot < 0.85 || dDest < 1.0) {
+          activeBallObs = null;
+        }
+      }
+      this.obstacleManager.updateGrid(activeBallObs);
       this.validateCurrentPath(currentRobotPose);
     }
 
