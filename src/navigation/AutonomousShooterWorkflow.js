@@ -6,6 +6,9 @@
 
 import { SIMULATION_CONFIG } from '../simulation/SimulationConfig.js';
 import { RobotKinematics } from '../robot/RobotKinematics.js';
+import { TrajectoryCalculator } from '../robot/TrajectoryCalculator.js';
+import { AdaptiveShotCorrector } from '../robot/AdaptiveShotCorrector.js';
+import { ClosedLoopShootingController } from '../robot/ClosedLoopShootingController.js';
 
 export class AutonomousShooterWorkflow {
   /**
@@ -13,12 +16,17 @@ export class AutonomousShooterWorkflow {
    * @param {Object} options.robot Reference to Robot instance
    * @param {Object} options.basketball Reference to Basketball instance
    * @param {import('../robot/HoopDetector.js').HoopDetector} options.hoopDetector
+   * @param {AdaptiveShotCorrector} [options.adaptiveCorrector]
+   * @param {TrajectoryCalculator} [options.trajectoryCalculator]
    * @param {{ x: number, y: number, z: number }} [options.hoopTarget]
    */
   constructor(options) {
     this.robot = options.robot;
     this.basketball = options.basketball;
     this.hoopDetector = options.hoopDetector;
+
+    this.calculator = options.trajectoryCalculator ?? new TrajectoryCalculator();
+    this.corrector = options.adaptiveCorrector ?? new AdaptiveShotCorrector();
 
     const courtLen = SIMULATION_CONFIG.court.length;
     const overhang = SIMULATION_CONFIG.court.basketCenterOverhang;
@@ -27,6 +35,16 @@ export class AutonomousShooterWorkflow {
       y: SIMULATION_CONFIG.hoop.rimHeight,
       z: 0.0
     };
+
+    // Dedicated closed-loop shooting controller
+    this.shootingController = new ClosedLoopShootingController({
+      robot: this.robot,
+      basketball: this.basketball,
+      hoopDetector: this.hoopDetector,
+      trajectoryCalculator: this.calculator,
+      adaptiveCorrector: this.corrector,
+      hoopTarget: this.hoopTarget
+    });
 
     // Default shooting position (Free-throw line key: X = 8.2, Z = 0.0)
     this.defaultShootingPos = { x: 8.2, z: 0.0 };
@@ -44,6 +62,7 @@ export class AutonomousShooterWorkflow {
 
     this.timer = 0.0;
     this.statusMessage = 'Autonomous workflow idle';
+    this.activeSolution = null;
   }
 
   /**
@@ -187,16 +206,48 @@ export class AutonomousShooterWorkflow {
       case 'ALIGNING_WITH_HOOP': {
         const dx = this.hoopTarget.x - robotPos.x;
         const dz = this.hoopTarget.z - robotPos.z;
-        const targetHeading = Math.atan2(-dz, dx);
+        const nominalHeading = Math.atan2(-dz, dx);
+        const targetHeading = RobotKinematics.normalizeAngle(nominalHeading + this.corrector.headingBias);
         const headingErr = RobotKinematics.normalizeAngle(targetHeading - heading);
 
-        // Turn in place to aim directly at hoop
+        // Turn in place to aim directly at hoop with adaptive heading offset
         this.robot.driveController.setTargetHeading(targetHeading, 0.0);
 
         if (Math.abs(headingErr) <= this.alignmentToleranceRad) {
           this.robot.driveController.stop();
+
+          // Calculate and optimize ballistic launch parameters
+          const muzzleLocal = this.robot.shooter?.muzzleLocalPos ?? { x: 0.20, y: 0.45, z: 0.0 };
+          const cosH = Math.cos(heading);
+          const sinH = Math.sin(heading);
+          const muzzleWorld = {
+            x: robotPos.x + cosH * muzzleLocal.x,
+            y: robotPos.y + muzzleLocal.y,
+            z: robotPos.z - sinH * muzzleLocal.x
+          };
+
+          const opt = this.calculator.optimizeTrajectory(muzzleWorld, this.hoopTarget);
+          if (opt.valid && opt.solution) {
+            const adapted = this.corrector.applyCorrection({
+              speed: opt.solution.speed,
+              launchAngleDeg: opt.solution.launchAngleDeg,
+              requiredHeadingRad: opt.solution.requiredHeadingRad
+            });
+
+            this.activeSolution = {
+              ...opt.solution,
+              speed: adapted.speed,
+              launchAngleDeg: adapted.launchAngleDeg,
+              biases: adapted.biases
+            };
+
+            this.robot.shooter.setLaunchAngle(this.activeSolution.launchAngleDeg);
+            this.robot.shooter.spinUp(this.activeSolution.speed);
+          } else {
+            this.robot.shooter.prepareShotAtHoop(this.robot, this.hoopTarget);
+          }
+
           this.transitionTo('SPINNING_UP', 'Aligned with basket: spinning up flywheels');
-          this.robot.shooter.prepareShotAtHoop(this.robot, this.hoopTarget);
         } else if (this.timer >= this.alignmentTimeout) {
           this.robot.driveController.stop();
           const errDeg = ((Math.abs(headingErr) * 180) / Math.PI).toFixed(1);
@@ -211,25 +262,44 @@ export class AutonomousShooterWorkflow {
           this.transitionTo('FIRING', 'Flywheels ready: firing shot!');
           const fired = this.robot.shooter.fire(this.robot, this.basketball, this.hoopDetector, this.hoopTarget);
           if (!fired) {
-            this.transitionTo('FAILED', 'Shooter failed to fire');
+            this.transitionTo('FAILED', `Shooter failed to fire: ${this.robot.shooter.lastRejectReason || ''}`);
           }
         }
         break;
       }
 
       case 'FIRING': {
+        const shotInfo = {
+          id: Date.now(),
+          distance: Math.hypot(this.hoopTarget.x - robotPos.x, this.hoopTarget.z - robotPos.z),
+          launchSpeed: this.activeSolution ? this.activeSolution.speed : this.robot.shooter.targetLaunchSpeed,
+          launchAngleDeg: this.activeSolution ? this.activeSolution.launchAngleDeg : this.robot.shooter.launchAngleDeg,
+          headingErrorDeg: ((this.targetHeading - heading) * 180) / Math.PI,
+          predictedApex: this.activeSolution ? this.activeSolution.apexHeight : 0,
+          predictedFlightTime: this.activeSolution ? this.activeSolution.flightTime : 0
+        };
+
+        if (this.hoopDetector) {
+          this.hoopDetector.notifyShotFired(shotInfo);
+        }
+
         this.transitionTo('TRACKING_TRAJECTORY', 'Ball in flight: tracking ballistic trajectory');
         break;
       }
 
       case 'TRACKING_TRAJECTORY': {
         const shotResult = this.hoopDetector.stats.lastShotResult;
-        if (shotResult === 'SCORED') {
-          this.transitionTo('COMPLETED', 'BASKET SCORED! Shot successful');
-        } else if (shotResult === 'MISSED') {
-          this.transitionTo('COMPLETED', 'Shot missed: ball contacted floor or deflected');
-        } else if (this.timer > 5.5) {
-          this.transitionTo('COMPLETED', 'Shot sequence finished');
+        if (shotResult === 'SCORED' || shotResult === 'MISSED' || this.timer > 5.5) {
+          // Record shot outcome into adaptive corrector
+          if (this.hoopDetector.lastShotDetails) {
+            this.corrector.recordShotOutcome(this.hoopDetector.lastShotDetails);
+          }
+          const detailed = this.hoopDetector.stats.lastDetailedResult || shotResult;
+          if (shotResult === 'SCORED') {
+            this.transitionTo('COMPLETED', `BASKET SCORED! (${detailed})`);
+          } else {
+            this.transitionTo('COMPLETED', `Shot finished: ${detailed}`);
+          }
         }
         break;
       }
@@ -243,6 +313,10 @@ export class AutonomousShooterWorkflow {
     this.stage = 'IDLE';
     this.statusMessage = 'Autonomous workflow idle';
     this.timer = 0.0;
+    this.activeSolution = null;
+    if (this.shootingController) {
+      this.shootingController.reset();
+    }
   }
 
   /**
@@ -253,7 +327,11 @@ export class AutonomousShooterWorkflow {
       stage: this.stage,
       statusMessage: this.statusMessage,
       timer: this.timer,
-      isActive: (this.stage !== 'IDLE' && this.stage !== 'COMPLETED' && this.stage !== 'CANCELLED' && this.stage !== 'FAILED')
+      isActive: (this.stage !== 'IDLE' && this.stage !== 'COMPLETED' && this.stage !== 'CANCELLED' && this.stage !== 'FAILED'),
+      ballCaptured: this.robot?.intake?.isBallCaptured ?? false,
+      activeSolution: this.activeSolution,
+      adaptiveBiases: this.corrector ? this.corrector.getTelemetry() : {},
+      shootingController: this.shootingController ? this.shootingController.getTelemetry() : {}
     };
   }
 }

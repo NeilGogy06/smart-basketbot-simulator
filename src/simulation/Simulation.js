@@ -90,6 +90,8 @@ export class Simulation {
 
     // Basketball scoring detection & autonomous shooter workflow
     this.hoopDetector = new HoopDetector();
+    this.robot.initShootingController(this.basketball, this.hoopDetector);
+
     this.shooterWorkflow = new AutonomousShooterWorkflow({
       robot: this.robot,
       basketball: this.basketball,
@@ -317,7 +319,9 @@ export class Simulation {
         headingErrorDeg: driveTel.headingErrorDeg || 0,
         pidOutput: driveTel.pidOutput || 0,
         intake: driveTel.intake || {},
-        shooter: driveTel.shooter || {}
+        shooter: driveTel.shooter || {},
+        shootingController: driveTel.shootingController || {},
+        adaptiveCorrector: driveTel.adaptiveCorrector || {}
       },
       shooterWorkflow: this.shooterWorkflow ? this.shooterWorkflow.getTelemetry() : {},
       shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {}
@@ -457,6 +461,25 @@ export class Simulation {
   cancelAutonomousShootingSequence() {
     if (this.shooterWorkflow) {
       this.shooterWorkflow.cancelSequence();
+    }
+  }
+
+  /**
+   * Starts dedicated closed-loop targeting and shooting sequence from current robot position.
+   */
+  startClosedLoopShooting() {
+    if (this.robot) {
+      return this.robot.startClosedLoopShooting();
+    }
+    return false;
+  }
+
+  /**
+   * Cancels active closed-loop shooting sequence.
+   */
+  cancelClosedLoopShooting() {
+    if (this.robot) {
+      this.robot.cancelClosedLoopShooting();
     }
   }
 

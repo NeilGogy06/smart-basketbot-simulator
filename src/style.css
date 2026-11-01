@@ -831,6 +831,44 @@ kbd {
   color: #34d399;
 }
 
+.recent-shots-container {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shot-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 3px;
+  font-size: 0.68rem;
+  border-left: 3px solid #64748b;
+}
+
+.shot-history-row.scored {
+  border-left-color: #10b981;
+}
+
+.shot-history-row.missed {
+  border-left-color: #ef4444;
+}
+
+.adaptive-bias-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 4px;
+  font-size: 0.68rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .sim-telemetry-panel {

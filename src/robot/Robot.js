@@ -19,6 +19,9 @@ import { RobotInputController } from './RobotInputController.js';
 import { AutonomousNavController } from '../navigation/AutonomousNavController.js';
 import { IntakeMechanism } from './IntakeMechanism.js';
 import { ShootingMechanism } from './ShootingMechanism.js';
+import { TrajectoryCalculator } from './TrajectoryCalculator.js';
+import { AdaptiveShotCorrector } from './AdaptiveShotCorrector.js';
+import { ClosedLoopShootingController } from './ClosedLoopShootingController.js';
 
 export class Robot {
   /**
@@ -68,6 +71,11 @@ export class Robot {
     // Intake and Shooting Subsystems
     this.intake = new IntakeMechanism();
     this.shooter = new ShootingMechanism();
+
+    // Trajectory calculation, adaptive correction, and closed-loop shooting
+    this.trajectoryCalculator = new TrajectoryCalculator();
+    this.adaptiveCorrector = new AdaptiveShotCorrector();
+    this.shootingController = null;
 
     // Component references for visual animation
     this.leftWheel = null;
@@ -507,6 +515,9 @@ export class Robot {
       this.intake.update(deltaTime, this, basketballObj);
     }
     this.shooter.update(deltaTime);
+    if (this.shootingController && this.shootingController.state !== 'IDLE') {
+      this.shootingController.update(deltaTime);
+    }
 
     // 7. Animate intake roller mesh
     if (this.intakeRoller) {
@@ -661,11 +672,49 @@ export class Robot {
       navigation: navTel,
       intake: this.intake ? this.intake.getTelemetry() : {},
       shooter: this.shooter ? this.shooter.getTelemetry() : {},
+      shootingController: this.shootingController ? this.shootingController.getTelemetry() : {},
+      adaptiveCorrector: this.adaptiveCorrector ? this.adaptiveCorrector.getTelemetry() : {},
       actualHeadingRad: heading,
       actualHeadingDeg: (heading * 180) / Math.PI,
       actualLinearSpeed: Math.hypot(linvel.x, linvel.z),
       actualAngularSpeed: angvel.y
     };
+  }
+
+  /**
+   * Initializes dedicated closed-loop shooting controller.
+   * @param {Object} basketball
+   * @param {Object} hoopDetector
+   */
+  initShootingController(basketball, hoopDetector) {
+    this.shootingController = new ClosedLoopShootingController({
+      robot: this,
+      basketball,
+      hoopDetector,
+      trajectoryCalculator: this.trajectoryCalculator,
+      adaptiveCorrector: this.adaptiveCorrector
+    });
+    return this.shootingController;
+  }
+
+  /**
+   * Starts dedicated closed-loop trajectory optimization, alignment, spinup, and firing.
+   * @param {{ x: number, y: number, z: number }} [hoopTarget]
+   */
+  startClosedLoopShooting(hoopTarget = null) {
+    if (this.shootingController) {
+      return this.shootingController.startShootingSequence(hoopTarget);
+    }
+    return false;
+  }
+
+  /**
+   * Cancels active closed-loop shooting sequence.
+   */
+  cancelClosedLoopShooting() {
+    if (this.shootingController) {
+      this.shootingController.cancel();
+    }
   }
 
   /**

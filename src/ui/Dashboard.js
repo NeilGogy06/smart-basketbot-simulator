@@ -70,7 +70,7 @@ export class Dashboard {
       <!-- SIDEBAR TELEMETRY PANELS -->
       <aside class="sim-telemetry-panel">
 
-        <!-- AUTONOMOUS SHOOTER SUITE -->
+        <!-- AUTONOMOUS SHOOTER SUITE & CLOSED-LOOP CONTROL -->
         <div class="telemetry-card card-auto-shooter">
           <div class="card-header">
             <div class="card-title-wrap">
@@ -82,19 +82,66 @@ export class Dashboard {
           <div class="nav-status-banner font-mono text-amber" id="workflow-status-msg" style="margin-bottom: 8px;">
             Autonomous workflow ready.
           </div>
-          <div class="nav-action-row">
+          <div class="nav-action-row" style="margin-bottom: 8px;">
             <button class="btn btn-accent btn-nav-action" id="btn-workflow-start" title="Run full autonomous acquire, navigate, align, spin up and shoot sequence">
               <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
               <span>Acquire & Shoot</span>
+            </button>
+            <button class="btn btn-secondary btn-nav-action" id="btn-closedloop-shoot" title="Align, calculate trajectory, spin up and shoot from current location (requires ball captured)">
+              <span>Aim & Shoot</span>
             </button>
             <button class="btn btn-danger btn-nav-action" id="btn-workflow-cancel" title="Abort sequence">
               <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
               <span>Abort</span>
             </button>
           </div>
+
+          <!-- Real-Time Ballistic Trajectory & Alignment Metrics -->
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Target Dist</span>
+              <span class="grid-value font-mono text-cyan" id="wf-target-dist">-- m</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Align Error</span>
+              <span class="grid-value font-mono" id="wf-align-error">--°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Launch Angle</span>
+              <span class="grid-value font-mono text-amber" id="wf-launch-angle">--°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Req. Flywheel</span>
+              <span class="grid-value font-mono text-cyan" id="wf-flywheel-rpm">-- RPM</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Flight Time</span>
+              <span class="grid-value font-mono" id="wf-flight-time">-- s</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Apex Height</span>
+              <span class="grid-value font-mono" id="wf-apex-height">-- m</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Entry Angle</span>
+              <span class="grid-value font-mono" id="wf-entry-angle">--°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Rim Margin</span>
+              <span class="grid-value font-mono text-success" id="wf-rim-margin">-- m</span>
+            </div>
+          </div>
+
+          <!-- Adaptive Feedback Calibration -->
+          <div class="adaptive-bias-bar font-mono">
+            <span class="text-secondary" style="font-size: 0.62rem;">ADAPTIVE BIAS:</span>
+            <span>Δv: <strong class="text-cyan" id="wf-bias-vel">0.00</strong></span>
+            <span>Δθ: <strong class="text-amber" id="wf-bias-elev">0.0°</strong></span>
+            <span>Δψ: <strong class="text-cyan" id="wf-bias-head">0.0°</strong></span>
+          </div>
         </div>
 
-        <!-- SHOT PERFORMANCE STATISTICS -->
+        <!-- SHOT PERFORMANCE STATISTICS & HISTORY -->
         <div class="telemetry-card card-shot-stats">
           <div class="card-header">
             <div class="card-title-wrap">
@@ -119,6 +166,16 @@ export class Dashboard {
             <div class="grid-item">
               <span class="grid-label">Accuracy %</span>
               <span class="grid-value font-mono text-cyan" id="stat-accuracy">0.0%</span>
+            </div>
+          </div>
+
+          <!-- Recent Shot Outcomes List (Last 5) -->
+          <div class="recent-shots-container">
+            <div style="font-size: 0.65rem; color: var(--text-muted); font-weight: 700; display: flex; justify-content: space-between;">
+              <span>RECENT SHOTS (LAST 5)</span>
+            </div>
+            <div id="recent-shots-list" class="font-mono" style="display: flex; flex-direction: column; gap: 3px;">
+              <div style="font-size: 0.65rem; color: var(--text-muted); font-style: italic; padding: 2px 4px;">Awaiting shot attempts...</div>
             </div>
           </div>
         </div>
@@ -485,9 +542,20 @@ export class Dashboard {
       simSteps: this.domElement.querySelector('#txt-sim-steps'),
       fps: this.domElement.querySelector('#txt-fps'),
 
-      // Autonomous Shooter Workflow nodes
+      // Autonomous Shooter Workflow & Trajectory nodes
       workflowStageBadge: this.domElement.querySelector('#workflow-stage-badge'),
       workflowStatusMsg: this.domElement.querySelector('#workflow-status-msg'),
+      wfTargetDist: this.domElement.querySelector('#wf-target-dist'),
+      wfAlignError: this.domElement.querySelector('#wf-align-error'),
+      wfLaunchAngle: this.domElement.querySelector('#wf-launch-angle'),
+      wfFlywheelRpm: this.domElement.querySelector('#wf-flywheel-rpm'),
+      wfFlightTime: this.domElement.querySelector('#wf-flight-time'),
+      wfApexHeight: this.domElement.querySelector('#wf-apex-height'),
+      wfEntryAngle: this.domElement.querySelector('#wf-entry-angle'),
+      wfRimMargin: this.domElement.querySelector('#wf-rim-margin'),
+      wfBiasVel: this.domElement.querySelector('#wf-bias-vel'),
+      wfBiasElev: this.domElement.querySelector('#wf-bias-elev'),
+      wfBiasHead: this.domElement.querySelector('#wf-bias-head'),
 
       // Shot Performance Statistics
       shotResultBadge: this.domElement.querySelector('#shot-result-badge'),
@@ -495,6 +563,7 @@ export class Dashboard {
       statScored: this.domElement.querySelector('#stat-scored'),
       statMissed: this.domElement.querySelector('#stat-missed'),
       statAccuracy: this.domElement.querySelector('#stat-accuracy'),
+      recentShotsList: this.domElement.querySelector('#recent-shots-list'),
 
       // Intake and containment nodes
       intakeStatusBadge: this.domElement.querySelector('#intake-status-badge'),
@@ -687,9 +756,10 @@ export class Dashboard {
    * Binds intake, flywheel shooter, and autonomous shooting workflow UI buttons and sliders.
    */
   bindShooterAndIntakeControls() {
-    // Autonomous Shooter Workflow Controls
+    // Autonomous Shooter Workflow & Closed-Loop Controls
     const btnWorkflowStart = this.domElement.querySelector('#btn-workflow-start');
     const btnWorkflowCancel = this.domElement.querySelector('#btn-workflow-cancel');
+    const btnClosedLoopShoot = this.domElement.querySelector('#btn-closedloop-shoot');
 
     if (btnWorkflowStart) {
       btnWorkflowStart.addEventListener('click', () => {
@@ -697,9 +767,16 @@ export class Dashboard {
       });
     }
 
+    if (btnClosedLoopShoot) {
+      btnClosedLoopShoot.addEventListener('click', () => {
+        this.simulation.startClosedLoopShooting();
+      });
+    }
+
     if (btnWorkflowCancel) {
       btnWorkflowCancel.addEventListener('click', () => {
         this.simulation.cancelAutonomousShootingSequence();
+        this.simulation.cancelClosedLoopShooting();
       });
     }
 
@@ -780,25 +857,72 @@ export class Dashboard {
 
     const r = data.robot;
 
-    // Autonomous Shooter Workflow telemetry
-    if (data.shooterWorkflow && this.nodes.workflowStageBadge) {
-      const wf = data.shooterWorkflow;
-      this.nodes.workflowStageBadge.textContent = wf.stage || 'IDLE';
-      if (wf.stage === 'COMPLETED') {
+    // Autonomous Shooter Workflow & Closed-Loop Controller telemetry
+    const wf = data.shooterWorkflow;
+    const clShooter = r.shootingController;
+    const activeShooter = (clShooter && clShooter.isActive) ? clShooter : wf;
+
+    if (activeShooter && this.nodes.workflowStageBadge) {
+      const stage = activeShooter.stage || activeShooter.state || 'IDLE';
+      this.nodes.workflowStageBadge.textContent = stage;
+      if (stage === 'COMPLETED') {
         this.nodes.workflowStageBadge.className = 'badge badge-green';
-      } else if (wf.isActive) {
+      } else if (stage === 'FIRING' || stage === 'READY') {
+        this.nodes.workflowStageBadge.className = 'badge badge-amber';
+      } else if (activeShooter.isActive) {
         this.nodes.workflowStageBadge.className = 'badge badge-cyan';
-      } else if (wf.stage === 'CANCELLED' || wf.stage === 'FAILED') {
+      } else if (stage === 'CANCELLED' || stage === 'FAILED') {
         this.nodes.workflowStageBadge.className = 'badge badge-red';
       } else {
         this.nodes.workflowStageBadge.className = 'badge badge-slate';
       }
       if (this.nodes.workflowStatusMsg) {
-        this.nodes.workflowStatusMsg.textContent = wf.statusMessage || '';
+        this.nodes.workflowStatusMsg.textContent = activeShooter.statusMessage || '';
       }
     }
 
-    // Shot Performance Statistics
+    // Ballistic Trajectory & Alignment Readouts
+    const activeSol = wf?.activeSolution || clShooter?.trajectorySolution;
+    if (this.nodes.wfTargetDist) {
+      if (activeSol) {
+        this.nodes.wfTargetDist.textContent = `${(activeSol.targetDistance ?? r.distToHoop).toFixed(2)} m`;
+        this.nodes.wfAlignError.textContent = `${(activeSol.headingErrorDeg ?? 0).toFixed(1)}°`;
+        this.nodes.wfLaunchAngle.textContent = `${(activeSol.launchAngleDeg ?? 52).toFixed(1)}°`;
+        const rpm = (activeSol.launchSpeed / (0.05 * 2 * Math.PI / 60)).toFixed(0);
+        this.nodes.wfFlywheelRpm.textContent = `${rpm} RPM`;
+        this.nodes.wfFlightTime.textContent = `${(activeSol.flightTime ?? 0).toFixed(2)} s`;
+        this.nodes.wfApexHeight.textContent = `${(activeSol.apexHeight ?? 0).toFixed(2)} m`;
+        this.nodes.wfEntryAngle.textContent = `${(activeSol.entryAngleDeg ?? 0).toFixed(1)}°`;
+        this.nodes.wfRimMargin.textContent = activeSol.margin != null 
+          ? `${(activeSol.margin >= 0 ? '+' : '')}${(activeSol.margin * 100).toFixed(1)} cm` 
+          : '--';
+      } else {
+        this.nodes.wfTargetDist.textContent = `${r.distToHoop.toFixed(2)} m`;
+        this.nodes.wfAlignError.textContent = `${(r.headingErrorDeg || 0).toFixed(1)}°`;
+        this.nodes.wfLaunchAngle.textContent = `${(r.shooter?.launchAngleDeg || 52).toFixed(1)}°`;
+        const currentRpm = r.shooter?.flywheelRpm || 0;
+        this.nodes.wfFlywheelRpm.textContent = `${currentRpm.toFixed(0)} RPM`;
+        this.nodes.wfFlightTime.textContent = '-- s';
+        this.nodes.wfApexHeight.textContent = '-- m';
+        this.nodes.wfEntryAngle.textContent = '--°';
+        this.nodes.wfRimMargin.textContent = '--';
+      }
+    }
+
+    // Adaptive Calibration Biases
+    const biases = wf?.adaptiveBiases || r.adaptiveCorrector;
+    if (biases && this.nodes.wfBiasVel) {
+      const vBias = biases.velocityBias || 0;
+      const eBias = biases.elevationBias || 0;
+      const hBiasRad = biases.headingBias || 0;
+      const hBiasDeg = (hBiasRad * 180 / Math.PI);
+
+      this.nodes.wfBiasVel.textContent = `${vBias >= 0 ? '+' : ''}${vBias.toFixed(2)}`;
+      this.nodes.wfBiasElev.textContent = `${eBias >= 0 ? '+' : ''}${eBias.toFixed(1)}°`;
+      this.nodes.wfBiasHead.textContent = `${hBiasDeg >= 0 ? '+' : ''}${hBiasDeg.toFixed(1)}°`;
+    }
+
+    // Shot Performance Statistics & History
     if (data.shotStats && this.nodes.statAttempts) {
       const st = data.shotStats;
       this.nodes.statAttempts.textContent = `${st.totalAttempts || 0}`;
@@ -806,15 +930,42 @@ export class Dashboard {
       this.nodes.statMissed.textContent = `${st.missedShots || 0}`;
       this.nodes.statAccuracy.textContent = `${(st.accuracyPercent || 0).toFixed(1)}%`;
       if (this.nodes.shotResultBadge) {
-        this.nodes.shotResultBadge.textContent = st.lastShotResult || 'NO SHOTS';
-        if (st.lastShotResult === 'SCORED') {
+        const lastOutcome = st.lastShotDetails?.outcome || st.lastShotResult || 'NO SHOTS';
+        this.nodes.shotResultBadge.textContent = lastOutcome;
+        if (lastOutcome === 'SCORED') {
           this.nodes.shotResultBadge.className = 'badge badge-green';
-        } else if (st.lastShotResult === 'MISSED') {
+        } else if (lastOutcome.startsWith('MISSED_')) {
+          this.nodes.shotResultBadge.className = 'badge badge-amber';
+        } else if (lastOutcome === 'MISSED') {
           this.nodes.shotResultBadge.className = 'badge badge-red';
-        } else if (st.lastShotResult === 'IN_FLIGHT') {
+        } else if (lastOutcome === 'IN_FLIGHT') {
           this.nodes.shotResultBadge.className = 'badge badge-cyan';
         } else {
           this.nodes.shotResultBadge.className = 'badge badge-slate';
+        }
+      }
+
+      // Render recent shots list (cached by history count)
+      if (this.nodes.recentShotsList && st.shotHistory) {
+        if (this._lastRenderedHistoryCount !== st.shotHistory.length) {
+          this._lastRenderedHistoryCount = st.shotHistory.length;
+          if (st.shotHistory.length === 0) {
+            this.nodes.recentShotsList.innerHTML = `<div style="font-size: 0.65rem; color: var(--text-muted); font-style: italic; padding: 2px 4px;">Awaiting shot attempts...</div>`;
+          } else {
+            const recent = st.shotHistory.slice(-5).reverse();
+            this.nodes.recentShotsList.innerHTML = recent.map((shot, idx) => {
+              const isScore = shot.outcome === 'SCORED';
+              const badgeCls = isScore ? 'badge-green' : (shot.outcome.startsWith('MISSED_') ? 'badge-amber' : 'badge-red');
+              const distStr = shot.distance != null ? `${shot.distance.toFixed(1)}m` : '';
+              const angStr = shot.launchAngleDeg != null ? `${shot.launchAngleDeg.toFixed(0)}°` : '';
+              const tag = [distStr, angStr].filter(Boolean).join(', ');
+              const shotNum = shot.shotId || (st.shotHistory.length - idx);
+              return `<div class="shot-history-row ${isScore ? 'scored' : 'missed'}">
+                <span class="text-secondary">#${shotNum} ${tag ? `(${tag})` : ''}</span>
+                <span class="badge ${badgeCls}">${shot.outcome}</span>
+              </div>`;
+            }).join('');
+          }
         }
       }
     }
