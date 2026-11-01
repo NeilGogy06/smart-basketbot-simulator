@@ -9,10 +9,12 @@ export class RobotInputController {
   /**
    * @param {import('./DifferentialDriveController.js').DifferentialDriveController} driveController
    * @param {() => boolean} isSimulationActive Predicate checking if simulation is running
+   * @param {(() => void) | null} [onManualAction] Callback when a manual teleop key is engaged
    */
-  constructor(driveController, isSimulationActive = () => true) {
+  constructor(driveController, isSimulationActive = () => true, onManualAction = null) {
     this.driveController = driveController;
     this.isSimulationActive = isSimulationActive;
+    this.onManualAction = onManualAction;
 
     // Active key state tracker
     this.keys = {
@@ -98,6 +100,9 @@ export class RobotInputController {
 
     if (handled) {
       e.preventDefault();
+      if (this.onManualAction && (this.keys.forward || this.keys.reverse || this.keys.left || this.keys.right)) {
+        this.onManualAction();
+      }
       this.updateActuatorCommands();
     }
   }
@@ -138,6 +143,9 @@ export class RobotInputController {
 
     if (handled) {
       e.preventDefault();
+      if (this.onManualAction && (this.keys.forward || this.keys.reverse || this.keys.left || this.keys.right)) {
+        this.onManualAction();
+      }
       this.updateActuatorCommands();
     }
   }

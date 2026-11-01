@@ -293,6 +293,12 @@ html, body {
   border: 1px solid rgba(148, 163, 184, 0.2);
 }
 
+.badge-green {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
 .badge-red {
   background: rgba(239, 68, 68, 0.2);
   color: #f87171;
@@ -650,6 +656,146 @@ kbd {
 
 .btn-estop:active {
   background: rgba(239, 68, 68, 0.7);
+}
+
+/* AUTONOMOUS NAVIGATION SUITE STYLES */
+.card-nav {
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 4px 18px rgba(2, 132, 199, 0.15);
+}
+
+.nav-control-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.nav-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-mode-toggle:hover {
+  border-color: var(--accent-cyan);
+}
+
+.mode-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.mode-led-manual {
+  background: #94a3b8;
+  box-shadow: 0 0 4px #94a3b8;
+}
+
+.mode-led-auto {
+  background: #38bdf8;
+  box-shadow: 0 0 8px #38bdf8;
+  animation: pulse 1.2s infinite;
+}
+
+.nav-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.coord-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+
+.coord-input-wrap label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.coord-input-wrap input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #38bdf8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  outline: none;
+}
+
+.court-preset-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.preset-pill-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nav-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.btn-nav-action {
+  flex: 1;
+  font-size: 0.72rem;
+  padding: 6px 10px;
+  justify-content: center;
+}
+
+.nav-telemetry-grid {
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
+}
+
+.nav-status-banner {
+  font-size: 0.68rem;
+  padding: 6px 8px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  color: #94a3b8;
+  line-height: 1.3;
+}
+
+.court-click-hint {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: 4px;
+  text-align: center;
 }
 
 /* TYPOGRAPHY HELPERS */

@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { SIMULATION_CONFIG } from '../simulation/SimulationConfig.js';
 import { DifferentialDriveController } from './DifferentialDriveController.js';
 import { RobotInputController } from './RobotInputController.js';
+import { AutonomousNavController } from '../navigation/AutonomousNavController.js';
 
 export class Robot {
   /**
@@ -37,6 +38,9 @@ export class Robot {
     this.rigidBody = null;
     this.collider = null;
 
+    // Control Mode: 'MANUAL' or 'AUTONOMOUS'
+    this.controlMode = 'MANUAL';
+
     // Subsystems
     const driveConfig = {
       wheelRadius: this.config.driveWheels.radius,
@@ -44,7 +48,20 @@ export class Robot {
       ...this.config.drive
     };
     this.driveController = new DifferentialDriveController(driveConfig);
-    this.inputController = new RobotInputController(this.driveController, isSimulationActive);
+    this.inputController = new RobotInputController(
+      this.driveController,
+      isSimulationActive,
+      () => {
+        // When manual drive key is pressed, gracefully yield autonomous control
+        if (this.controlMode === 'AUTONOMOUS') {
+          this.navController.cancel();
+          this.controlMode = 'MANUAL';
+        }
+      }
+    );
+
+    // Autonomous navigation subsystem
+    this.navController = new AutonomousNavController({ driveController: this.driveController });
 
     // Component references for visual animation
     this.leftWheel = null;
@@ -384,18 +401,25 @@ export class Robot {
    * Updates robot kinematics, applies actuator velocities to Rapier body,
    * spins visual wheel meshes, and animates sensor mast.
    * @param {number} deltaTime Frame time step in seconds
+   * @param {{ x: number, z: number } | null} [ballPose]
    */
-  update(deltaTime) {
+  update(deltaTime, ballPose = null) {
     if (!this.rigidBody) return;
 
     // 1. Query current physics state
     const currentHeading = this.getHeading();
     const currentLinvel = this.rigidBody.linvel();
+    const pos = this.getPosition();
 
-    // 2. Step differential drive controller
+    // 2. Step autonomous navigation guidance if in AUTONOMOUS mode
+    if (this.controlMode === 'AUTONOMOUS') {
+      this.navController.update(deltaTime, { x: pos.x, z: pos.z, heading: currentHeading }, ballPose);
+    }
+
+    // 3. Step differential drive controller
     const cmd = this.driveController.update(deltaTime, currentHeading);
 
-    // 3. Apply genuine physics velocities to Rapier rigid body:
+    // 4. Apply genuine physics velocities to Rapier rigid body:
     // Preserve current vertical velocity (currentLinvel.y) for gravity & floor contact
     this.rigidBody.setLinvel({
       x: cmd.worldLinvelX,
@@ -410,7 +434,7 @@ export class Robot {
       z: 0
     }, true);
 
-    // 4. Update visual wheel rotation based on actual angular wheel positions
+    // 5. Update visual wheel rotation based on actual angular wheel positions
     // Negate angle so forward rotation turns wheel in the driving direction
     if (this.leftWheel) {
       this.leftWheel.rotation.z = -this.driveController.wheelAngleLeft;
@@ -419,7 +443,7 @@ export class Robot {
       this.rightWheel.rotation.z = -this.driveController.wheelAngleRight;
     }
 
-    // 5. Update sensor mast animations (spinning LiDAR puck)
+    // 6. Update sensor mast animations (spinning LiDAR puck)
     if (this.lidarPuck) {
       this.lidarPuck.rotation.y += deltaTime * 6.0;
     }
@@ -431,6 +455,8 @@ export class Robot {
   reset(pos = this.initialPosition, headingRad = this.initialHeading) {
     if (!this.rigidBody) return;
 
+    this.controlMode = 'MANUAL';
+    this.navController.reset();
     this.driveController.reset();
     this.inputController.resetKeys();
 
@@ -447,6 +473,35 @@ export class Robot {
 
     if (this.leftWheel) this.leftWheel.rotation.z = 0;
     if (this.rightWheel) this.rightWheel.rotation.z = 0;
+  }
+
+  /**
+   * Commands the robot to autonomously plan and follow a path to world (targetX, targetZ).
+   */
+  startAutonomousNavigation(targetX, targetZ) {
+    this.controlMode = 'AUTONOMOUS';
+    const pos = this.getPosition();
+    const heading = this.getHeading();
+    return this.navController.navigateTo(targetX, targetZ, { x: pos.x, z: pos.z, heading });
+  }
+
+  /**
+   * Cancels active autonomous navigation and returns control to MANUAL teleop.
+   */
+  cancelAutonomousNavigation() {
+    this.navController.cancel();
+    this.controlMode = 'MANUAL';
+  }
+
+  /**
+   * Toggles or sets current control mode.
+   * @param {'MANUAL'|'AUTONOMOUS'} mode
+   */
+  setControlMode(mode) {
+    this.controlMode = mode;
+    if (mode === 'MANUAL') {
+      this.navController.cancel();
+    }
   }
 
   /**
@@ -497,12 +552,16 @@ export class Robot {
    */
   getDriveTelemetry() {
     const heading = this.getHeading();
+    const pos = this.getPosition();
     const driveTel = this.driveController.getTelemetry(heading);
+    const navTel = this.navController.getTelemetry({ x: pos.x, z: pos.z, heading });
     const linvel = this.getVelocity();
     const angvel = this.getAngularVelocity();
 
     return {
       ...driveTel,
+      controlMode: this.controlMode,
+      navigation: navTel,
       actualHeadingRad: heading,
       actualHeadingDeg: (heading * 180) / Math.PI,
       actualLinearSpeed: Math.hypot(linvel.x, linvel.z),

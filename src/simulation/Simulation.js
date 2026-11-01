@@ -14,6 +14,7 @@ import { BasketballHoop } from '../environment/BasketballHoop.js';
 import { Lighting } from '../environment/Lighting.js';
 import { Basketball } from '../environment/Basketball.js';
 import { Robot } from '../robot/Robot.js';
+import { PathVisualizer } from '../navigation/PathVisualizer.js';
 
 export class Simulation {
   /**
@@ -83,6 +84,13 @@ export class Simulation {
     this.robot = new Robot(this.scene, this.physicsWorld, () => this.isRunning);
     this.basketball = new Basketball(this.scene, this.physicsWorld);
 
+    // Autonomous Navigation Path Visualizer
+    this.pathVisualizer = new PathVisualizer(this.scene);
+
+    // Court click interaction
+    this.onCourtClickCallback = null;
+    this.setupCourtRaycaster();
+
     // Event listeners
     window.addEventListener('resize', this.onWindowResize);
 
@@ -136,6 +144,41 @@ export class Simulation {
   }
 
   /**
+   * Enables clicking on the 3D basketball court to select navigation targets.
+   */
+  setupCourtRaycaster() {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let downPos = { x: 0, y: 0 };
+
+    this.renderer.domElement.addEventListener('pointerdown', (e) => {
+      downPos = { x: e.clientX, y: e.clientY };
+    });
+
+    this.renderer.domElement.addEventListener('pointerup', (e) => {
+      // Differentiate clean click from orbit drag
+      const dist = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+      if (dist > 5) return;
+
+      if (!this.court || !this.court.floorMesh) return;
+
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, this.camera);
+      const intersects = raycaster.intersectObject(this.court.floorMesh);
+
+      if (intersects.length > 0) {
+        const pt = intersects[0].point;
+        if (this.onCourtClickCallback) {
+          this.onCourtClickCallback(pt.x, pt.z);
+        }
+      }
+    });
+  }
+
+  /**
    * Main simulation and render loop.
    */
   animate() {
@@ -157,9 +200,20 @@ export class Simulation {
       this.physicsWorld.step(deltaTime);
     }
 
-    // Update entity visuals (e.g. rotating LiDAR scanner on robot)
+    // Update entity visuals & autonomous navigation
+    const ballPos = this.basketball ? this.basketball.getPosition() : null;
     if (this.robot) {
-      this.robot.update(deltaTime);
+      this.robot.update(deltaTime, ballPos);
+    }
+
+    // Update navigation path visualizer
+    if (this.pathVisualizer && this.robot) {
+      const nav = this.robot.navController;
+      if (nav && (nav.state === 'NAVIGATING' || nav.state === 'APPROACHING_GOAL')) {
+        this.pathVisualizer.updatePath(nav.waypoints, this.robot.getPosition());
+      } else if (nav && (nav.state === 'GOAL_REACHED' || nav.state === 'IDLE' || nav.state === 'CANCELLED' || nav.state === 'BLOCKED')) {
+        this.pathVisualizer.clear();
+      }
     }
 
     // Update smooth camera controls
@@ -224,6 +278,8 @@ export class Simulation {
         angularVelocity: this.robot ? this.robot.getAngularVelocity().y : 0,
         distToHoop: distToHoop,
         // Differential drive & kinematics telemetry
+        controlMode: driveTel.controlMode || 'MANUAL',
+        navigation: driveTel.navigation || {},
         mode: driveTel.mode || 'STOPPED',
         movementState: driveTel.movementState || 'STOPPED',
         vLeft: driveTel.vLeft || 0,
@@ -293,6 +349,7 @@ export class Simulation {
     }
     this.resetRobot();
     this.resetBall();
+    if (this.pathVisualizer) this.pathVisualizer.clear();
     console.log('[Simulation] Simulation reset to initial state.');
   }
 
@@ -389,6 +446,7 @@ export class Simulation {
         this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
       }
     }
+    if (this.pathVisualizer) this.pathVisualizer.destroy();
     if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
   }

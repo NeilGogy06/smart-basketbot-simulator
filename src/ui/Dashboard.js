@@ -1,7 +1,7 @@
 /**
  * Dashboard.js
  * Renders the dark-themed engineering HUD, status monitors, telemetry metrics,
- * differential-drive kinematics monitors, and interactive robot teleoperation deck.
+ * differential-drive kinematics monitors, and autonomous path planning navigation suite.
  */
 
 export class Dashboard {
@@ -19,6 +19,7 @@ export class Dashboard {
 
     this.render();
     this.bindTeleopControls();
+    this.bindNavigationControls();
     this.subscribeTelemetry();
   }
 
@@ -67,6 +68,93 @@ export class Dashboard {
 
       <!-- SIDEBAR TELEMETRY PANELS -->
       <aside class="sim-telemetry-panel">
+
+        <!-- AUTONOMOUS NAVIGATION (A*) -->
+        <div class="telemetry-card card-nav">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+              </svg>
+              <span>AUTONOMOUS NAVIGATION (A*)</span>
+            </div>
+            <span class="badge badge-slate" id="nav-status-badge">IDLE</span>
+          </div>
+
+          <!-- Mode Toggle & Target Input -->
+          <div class="nav-control-block">
+            <div class="nav-mode-row">
+              <span class="sub-label">CONTROL MODE:</span>
+              <button class="btn btn-mode-toggle" id="btn-toggle-nav-mode">
+                <span class="mode-led" id="mode-led"></span>
+                <span id="lbl-control-mode">MANUAL TELEOP</span>
+              </button>
+            </div>
+
+            <!-- Destination Coordinates & Presets -->
+            <div class="nav-input-row">
+              <div class="coord-input-wrap">
+                <label>X (m):</label>
+                <input type="number" id="input-dest-x" step="0.5" value="8.2" min="-14" max="14" class="font-mono">
+              </div>
+              <div class="coord-input-wrap">
+                <label>Z (m):</label>
+                <input type="number" id="input-dest-z" step="0.5" value="0.0" min="-7" max="7" class="font-mono">
+              </div>
+            </div>
+
+            <!-- Court Waypoint Presets -->
+            <div class="court-preset-container">
+              <span class="sub-label">WAYPOINT PRESETS:</span>
+              <div class="preset-pill-grid">
+                <button class="btn btn-preset-mini" data-dest="8.2,0">East Key</button>
+                <button class="btn btn-preset-mini" data-dest="0,0">Center</button>
+                <button class="btn btn-preset-mini" data-dest="5.5,0">3-Pt Top</button>
+                <button class="btn btn-preset-mini" data-dest="10,5">Left Wing</button>
+                <button class="btn btn-preset-mini" data-dest="10,-5">Right Wing</button>
+                <button class="btn btn-preset-mini" data-dest="-8.2,0">West FT</button>
+                <button class="btn btn-preset-mini text-amber" id="btn-dest-ball">🏀 Ball</button>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="nav-action-row">
+              <button class="btn btn-primary btn-nav-action" id="btn-nav-start">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span>Start Navigation</span>
+              </button>
+              <button class="btn btn-danger btn-nav-action" id="btn-nav-cancel">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                <span>Cancel</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Real-Time Navigation Readout -->
+          <div class="telemetry-grid nav-telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Target Coords</span>
+              <span class="grid-value font-mono text-cyan" id="nav-target-coords">None</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Distance Left</span>
+              <span class="grid-value font-mono text-amber" id="nav-distance-remaining">0.00 m</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Active Waypoints</span>
+              <span class="grid-value font-mono" id="nav-waypoint-count">0 / 0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Nav State</span>
+              <span class="grid-value font-mono" id="nav-state">IDLE</span>
+            </div>
+          </div>
+
+          <div class="nav-status-banner font-mono" id="nav-status-msg">
+            Ready for destination selection.
+          </div>
+          <div class="court-click-hint">Tip: Click anywhere on 3D court to set destination</div>
+        </div>
 
         <!-- ROBOT POSE & DYNAMICS -->
         <div class="telemetry-card">
@@ -164,15 +252,6 @@ export class Dashboard {
               <span class="grid-value font-mono text-cyan" id="pid-output">0.00 rad/s</span>
             </div>
           </div>
-
-          <!-- Quick Heading Hold Target Presets -->
-          <div class="heading-preset-row">
-            <span class="sub-label">SET HEADING:</span>
-            <button class="btn btn-preset-mini" data-heading="0">0° (Hoop)</button>
-            <button class="btn btn-preset-mini" data-heading="90">90° (Left)</button>
-            <button class="btn btn-preset-mini" data-heading="-90">-90° (Right)</button>
-            <button class="btn btn-preset-mini" data-heading="180">180°</button>
-          </div>
         </div>
 
         <!-- MANUAL TELEOPERATION PAD -->
@@ -268,6 +347,19 @@ export class Dashboard {
       simSteps: this.domElement.querySelector('#txt-sim-steps'),
       fps: this.domElement.querySelector('#txt-fps'),
 
+      // Navigation nodes
+      navStatusBadge: this.domElement.querySelector('#nav-status-badge'),
+      lblControlMode: this.domElement.querySelector('#lbl-control-mode'),
+      modeLed: this.domElement.querySelector('#mode-led'),
+      inputDestX: this.domElement.querySelector('#input-dest-x'),
+      inputDestZ: this.domElement.querySelector('#input-dest-z'),
+      navTargetCoords: this.domElement.querySelector('#nav-target-coords'),
+      navDistanceRemaining: this.domElement.querySelector('#nav-distance-remaining'),
+      navWaypointCount: this.domElement.querySelector('#nav-waypoint-count'),
+      navState: this.domElement.querySelector('#nav-state'),
+      navStatusMsg: this.domElement.querySelector('#nav-status-msg'),
+
+      // Robot pose & dynamics
       botMovementBadge: this.domElement.querySelector('#bot-movement-badge'),
       botPosX: this.domElement.querySelector('#bot-pos-x'),
       botPosZ: this.domElement.querySelector('#bot-pos-z'),
@@ -276,18 +368,21 @@ export class Dashboard {
       botAngvel: this.domElement.querySelector('#bot-angvel'),
       botHoopDist: this.domElement.querySelector('#bot-hoop-dist'),
 
+      // Wheel telemetry
       driveModeBadge: this.domElement.querySelector('#drive-mode-badge'),
       wheelRpmLeft: this.domElement.querySelector('#wheel-rpm-left'),
       wheelRpmRight: this.domElement.querySelector('#wheel-rpm-right'),
       wheelVl: this.domElement.querySelector('#wheel-vl'),
       wheelVr: this.domElement.querySelector('#wheel-vr'),
 
+      // Heading PID
       pidStatusBadge: this.domElement.querySelector('#pid-status-badge'),
       pidTargetHeading: this.domElement.querySelector('#pid-target-heading'),
       pidActualHeading: this.domElement.querySelector('#pid-actual-heading'),
       pidHeadingError: this.domElement.querySelector('#pid-heading-error'),
       pidOutput: this.domElement.querySelector('#pid-output'),
 
+      // Ball
       ballPosX: this.domElement.querySelector('#ball-pos-x'),
       ballPosY: this.domElement.querySelector('#ball-pos-y'),
       ballPosZ: this.domElement.querySelector('#ball-pos-z'),
@@ -295,6 +390,94 @@ export class Dashboard {
       ballVy: this.domElement.querySelector('#ball-vy'),
       ballBadge: this.domElement.querySelector('#ball-flight-badge')
     };
+  }
+
+  /**
+   * Binds autonomous navigation buttons, destination presets, and mode toggle.
+   */
+  bindNavigationControls() {
+    const btnToggleMode = this.domElement.querySelector('#btn-toggle-nav-mode');
+    const btnStart = this.domElement.querySelector('#btn-nav-start');
+    const btnCancel = this.domElement.querySelector('#btn-nav-cancel');
+    const btnDestBall = this.domElement.querySelector('#btn-dest-ball');
+    const inputX = this.domElement.querySelector('#input-dest-x');
+    const inputZ = this.domElement.querySelector('#input-dest-z');
+
+    // Toggle between MANUAL and AUTONOMOUS modes
+    btnToggleMode.addEventListener('click', () => {
+      if (!this.simulation.robot) return;
+      const current = this.simulation.robot.controlMode;
+      const next = (current === 'MANUAL') ? 'AUTONOMOUS' : 'MANUAL';
+      this.simulation.robot.setControlMode(next);
+      this.updateModeDisplay(next);
+    });
+
+    // Start Navigation to input coordinates
+    btnStart.addEventListener('click', () => {
+      if (!this.simulation.robot) return;
+      const targetX = parseFloat(inputX.value);
+      const targetZ = parseFloat(inputZ.value);
+      if (!isNaN(targetX) && !isNaN(targetZ)) {
+        this.simulation.robot.startAutonomousNavigation(targetX, targetZ);
+        this.updateModeDisplay('AUTONOMOUS');
+      }
+    });
+
+    // Cancel Navigation
+    btnCancel.addEventListener('click', () => {
+      if (!this.simulation.robot) return;
+      this.simulation.robot.cancelAutonomousNavigation();
+      this.updateModeDisplay('MANUAL');
+    });
+
+    // Preset Buttons
+    const presetBtns = this.domElement.querySelectorAll('.preset-pill-grid .btn-preset-mini[data-dest]');
+    presetBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const [xStr, zStr] = btn.dataset.dest.split(',');
+        inputX.value = xStr;
+        inputZ.value = zStr;
+        if (this.simulation.robot) {
+          this.simulation.robot.startAutonomousNavigation(parseFloat(xStr), parseFloat(zStr));
+          this.updateModeDisplay('AUTONOMOUS');
+        }
+      });
+    });
+
+    // Preset for Ball Target
+    if (btnDestBall) {
+      btnDestBall.addEventListener('click', () => {
+        if (!this.simulation.basketball || !this.simulation.robot) return;
+        const bPos = this.simulation.basketball.getPosition();
+        inputX.value = bPos.x.toFixed(2);
+        inputZ.value = bPos.z.toFixed(2);
+        this.simulation.robot.startAutonomousNavigation(bPos.x, bPos.z);
+        this.updateModeDisplay('AUTONOMOUS');
+      });
+    }
+
+    // Court click listener
+    this.simulation.onCourtClickCallback = (clickedX, clickedZ) => {
+      inputX.value = clickedX.toFixed(2);
+      inputZ.value = clickedZ.toFixed(2);
+      if (this.simulation.robot) {
+        this.simulation.robot.startAutonomousNavigation(clickedX, clickedZ);
+        this.updateModeDisplay('AUTONOMOUS');
+      }
+    };
+  }
+
+  /**
+   * Updates visual mode toggle indicator.
+   */
+  updateModeDisplay(mode) {
+    if (mode === 'AUTONOMOUS') {
+      this.nodes.lblControlMode.textContent = 'AUTONOMOUS MODE';
+      this.nodes.modeLed.className = 'mode-led mode-led-auto';
+    } else {
+      this.nodes.lblControlMode.textContent = 'MANUAL TELEOP';
+      this.nodes.modeLed.className = 'mode-led mode-led-manual';
+    }
   }
 
   /**
@@ -331,18 +514,6 @@ export class Dashboard {
     bindBtn('#btn-teleop-left', 'left');
     bindBtn('#btn-teleop-right', 'right');
     bindBtn('#btn-teleop-estop', 'estop');
-
-    // Heading preset buttons
-    const presetButtons = this.domElement.querySelectorAll('.btn-preset-mini');
-    presetButtons.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const targetDeg = parseFloat(btn.dataset.heading);
-        const targetRad = (targetDeg * Math.PI) / 180;
-        if (this.simulation.robot) {
-          this.simulation.robot.driveController.setTargetHeading(targetRad, 0.0);
-        }
-      });
-    });
   }
 
   /**
@@ -373,8 +544,39 @@ export class Dashboard {
     this.nodes.simSteps.textContent = `#${data.stepCount}`;
     this.nodes.fps.textContent = `${data.fps}`;
 
-    // Robot pose and dynamics
     const r = data.robot;
+
+    // Navigation telemetry
+    if (r.navigation) {
+      const nav = r.navigation;
+      this.nodes.navState.textContent = nav.state;
+      this.nodes.navStatusMsg.textContent = nav.statusMessage || '';
+      this.nodes.navStatusBadge.textContent = nav.state;
+
+      if (nav.state === 'NAVIGATING' || nav.state === 'APPROACHING_GOAL') {
+        this.nodes.navStatusBadge.className = 'badge badge-cyan';
+      } else if (nav.state === 'GOAL_REACHED') {
+        this.nodes.navStatusBadge.className = 'badge badge-green';
+      } else if (nav.state === 'BLOCKED') {
+        this.nodes.navStatusBadge.className = 'badge badge-red';
+      } else {
+        this.nodes.navStatusBadge.className = 'badge badge-slate';
+      }
+
+      if (nav.destination) {
+        this.nodes.navTargetCoords.textContent = `(${nav.destination.x.toFixed(1)}, ${nav.destination.z.toFixed(1)})`;
+        this.nodes.navDistanceRemaining.textContent = `${nav.distanceRemaining.toFixed(2)} m`;
+      } else {
+        this.nodes.navTargetCoords.textContent = 'None';
+        this.nodes.navDistanceRemaining.textContent = '0.00 m';
+      }
+
+      this.nodes.navWaypointCount.textContent = `${nav.currentWaypointIndex + (nav.waypointCount > 0 ? 1 : 0)} / ${nav.waypointCount}`;
+
+      this.updateModeDisplay(r.controlMode || 'MANUAL');
+    }
+
+    // Robot pose and dynamics
     this.nodes.botPosX.textContent = `${r.x.toFixed(2)} m`;
     this.nodes.botPosZ.textContent = `${r.z.toFixed(2)} m`;
     this.nodes.botHeading.textContent = `${r.headingDeg.toFixed(1)}° (${r.headingRad.toFixed(2)} rad)`;
@@ -400,7 +602,7 @@ export class Dashboard {
     this.nodes.wheelVr.textContent = `${r.vRight.toFixed(2)} m/s`;
 
     // Heading PID telemetry
-    if (r.mode === 'HEADING_HOLD') {
+    if (r.mode === 'HEADING_HOLD' || r.controlMode === 'AUTONOMOUS') {
       this.nodes.pidStatusBadge.textContent = 'ACTIVE';
       this.nodes.pidStatusBadge.className = 'badge badge-cyan';
     } else {
