@@ -110,6 +110,11 @@ export class PathVisualizer {
 
     if (this.destinationMarker) {
       this.group.remove(this.destinationMarker);
+      this.destinationMarker.traverse((child) => {
+        if (child.isMesh && child.geometry) {
+          child.geometry.dispose();
+        }
+      });
       this.destinationMarker = null;
     }
   }
@@ -122,8 +127,8 @@ export class PathVisualizer {
     this.lineMaterial.dispose();
     this.markerMaterial.dispose();
     this.destMaterial.dispose();
-    if (this.group.parentNode) {
-      this.group.parentNode.remove(this.group);
+    if (this.scene) {
+      this.scene.remove(this.group);
     }
   }
 }

@@ -121,11 +121,24 @@ export class AnalyticsManager {
     if (!gameplayController || !gameplayController.stateMachine) return;
 
     const onStateChangeHandler = (from, to, reason) => {
+      // Sync gameplay mode before recording state transition so session starts with correct mode and targets
+      if (gameplayController.mode) {
+        this.autonomy.currentMode = gameplayController.mode;
+        this.autonomy.targetShots = gameplayController.targetShots || 0;
+      }
+
       this.autonomy.recordStateTransition(from, to, reason);
 
       // Track collection retries when state machine enters reacquisition
       if (to === 'REACQUIRING_BALL') {
         this.collection.recordRetry();
+      }
+
+      // Automatically finish session tracking when state machine reaches a terminal state
+      if (to === 'COMPLETED' || to === 'FAILED' || to === 'CANCELLED') {
+        if (this.autonomy.activeSession && !this.autonomy.activeSession.isFinished) {
+          this.autonomy.finishSession(to, reason);
+        }
       }
     };
 

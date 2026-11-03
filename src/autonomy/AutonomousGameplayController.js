@@ -167,6 +167,9 @@ export class AutonomousGameplayController {
    */
   stop() {
     this.haltAllActuators();
+    if (this.robot) {
+      this.robot.setControlMode('MANUAL');
+    }
     return this.stateMachine.cancel('Autonomous gameplay stopped by user');
   }
 
@@ -175,6 +178,15 @@ export class AutonomousGameplayController {
    */
   reset() {
     this.haltAllActuators();
+    if (this.robot) {
+      this.robot.setControlMode('MANUAL');
+      if (typeof this.robot.navController?.reset === 'function') {
+        this.robot.navController.reset();
+      }
+      if (typeof this.robot.shootingController?.reset === 'function') {
+        this.robot.shootingController.reset();
+      }
+    }
     this.stateMachine.reset();
     this.currentTarget = null;
     this.targetShootingPos = null;
@@ -772,7 +784,12 @@ export class AutonomousGameplayController {
    * Internal hook executed on every state machine transition.
    */
   handleStateChange(from, to, reason) {
-    // console.log(`[AutonomousGameplayController] ${from} -> ${to}: ${reason}`);
+    if (to === 'COMPLETED' || to === 'FAILED' || to === 'CANCELLED') {
+      this.haltAllActuators();
+      if (this.robot) {
+        this.robot.setControlMode('MANUAL');
+      }
+    }
   }
 
   // =========================================================================

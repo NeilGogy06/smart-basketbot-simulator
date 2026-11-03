@@ -212,6 +212,10 @@ export class Basketball {
    */
   reset(pos = this.initialPosition, linvel = { x: 0, y: 0, z: 0 }) {
     if (!this.rigidBody) return;
+    if (this.collider && typeof this.collider.setSensor === 'function' && this.collider.isSensor()) {
+      this.collider.setSensor(false);
+    }
+    this.rigidBody.setGravityScale(1.0, true);
     this.physicsWorld.resetBody(this.rigidBody, pos);
     this.rigidBody.setLinvel(linvel, true);
     this.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);

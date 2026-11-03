@@ -642,6 +642,7 @@ export class Simulation {
     if (this.shooterWorkflow) this.shooterWorkflow.reset();
     if (this.visionManager) this.visionManager.destroy();
     if (this.gameplayController) this.gameplayController.stop();
+    if (this.analyticsManager) this.analyticsManager.destroy();
     if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
   }

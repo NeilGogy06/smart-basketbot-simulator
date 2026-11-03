@@ -32,6 +32,9 @@ export class BasketballCourt {
    * painted keys, center circle, and 3-point arcs.
    */
   createCourtTexture() {
+    if (typeof document === 'undefined') {
+      return null;
+    }
     const canvas = document.createElement('canvas');
     // High resolution canvas matching court proportions (28m x 15m) + apron
     const totalLength = this.config.length + this.config.apron * 2; // 32m
@@ -300,6 +303,7 @@ export class BasketballCourt {
     ];
 
     this.floorMesh = new THREE.Mesh(geometry, materials);
+    this.floorMesh.name = 'CourtFloor';
     // Center at Y = -courtHeight / 2 so the playing surface is exactly at Y = 0.0
     this.floorMesh.position.set(0, -courtHeight / 2, 0);
     this.floorMesh.receiveShadow = true;
@@ -313,10 +317,12 @@ export class BasketballCourt {
       metalness: 0.2
     });
     const foundationMesh = new THREE.Mesh(foundationGeom, foundationMat);
+    foundationMesh.name = 'CourtFoundation';
     foundationMesh.position.set(0, -courtHeight - 0.2, 0);
     foundationMesh.receiveShadow = true;
     this.group.add(foundationMesh);
 
+    this.group.updateMatrixWorld(true);
     this.scene.add(this.group);
   }
 

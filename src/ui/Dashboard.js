@@ -1251,6 +1251,11 @@ export class Dashboard {
         if (this.analyticsCharts) {
           this.analyticsCharts.setCategory(cat);
         }
+        if (this.simulation && this.simulation.analyticsManager) {
+          const an = this.simulation.analyticsManager.getTelemetry();
+          this.renderAnalyticsDetailGrid(an);
+          this.renderAnalyticsRecordsTable(an);
+        }
       });
     });
 
@@ -1962,13 +1967,12 @@ export class Dashboard {
         this.nodes.anKpiIntakeRate.textContent = `${(col.collectionSuccessRate || 0).toFixed(1)}%`;
       }
 
-      this.renderAnalyticsDetailGrid(an);
-      this.renderAnalyticsRecordsTable(an);
-
-      // Throttled Chart.js visuals refresh (every 250ms / 4 Hz)
+      // Throttled Chart.js and detailed analytics DOM refresh (every 250ms / 4 Hz)
       const now = Date.now();
       if (now - this.lastChartUpdate >= 250) {
         this.lastChartUpdate = now;
+        this.renderAnalyticsDetailGrid(an);
+        this.renderAnalyticsRecordsTable(an);
         if (this.analyticsCharts) {
           this.analyticsCharts.update(data);
         }

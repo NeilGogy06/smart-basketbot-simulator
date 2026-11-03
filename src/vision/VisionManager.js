@@ -69,6 +69,7 @@ export class VisionManager {
 
   /**
    * Refreshes list of solid occluder meshes from scene graph.
+   * Excludes basketballs, trajectory/path visualizers, and the robot's own chassis meshes.
    */
   refreshOccluders() {
     if (!this.scene) return;
@@ -76,7 +77,23 @@ export class VisionManager {
     const occluders = [];
     this.scene.traverse((obj) => {
       // Collect solid static environment meshes (stanchions, backboard, obstacles)
-      if (obj.isMesh && obj.name !== 'Basketball' && !obj.name.startsWith('Path')) {
+      if (!obj.isMesh) return;
+      // Exclude basketballs, path markers, and ground/floor planes
+      if (obj.name === 'Basketball' || obj.name.startsWith('Path') || obj.name.startsWith('Waypoint')) return;
+      if (obj.name === 'CourtFloor' || obj.name === 'CourtFoundation' || obj.name.includes('Floor')) return;
+
+      // Exclude robot's own chassis and mechanism meshes so they do not self-occlude the camera
+      let parent = obj.parent;
+      let isRobotMesh = (obj.name === 'SmartBasketBot' || obj.name.startsWith('Robot'));
+      while (parent) {
+        if (parent.name === 'SmartBasketBot' || (parent.name && parent.name.startsWith('Robot'))) {
+          isRobotMesh = true;
+          break;
+        }
+        parent = parent.parent;
+      }
+
+      if (!isRobotMesh) {
         occluders.push(obj);
       }
     });

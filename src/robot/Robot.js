@@ -567,6 +567,7 @@ export class Robot {
 
     if (this.intake) this.intake.reset();
     if (this.shooter) this.shooter.reset();
+    if (this.shootingController) this.shootingController.reset();
 
     const halfAngle = headingRad / 2;
     const rotation = {
@@ -598,6 +599,7 @@ export class Robot {
    */
   cancelAutonomousNavigation() {
     this.navController.cancel();
+    this.driveController.stop();
     this.controlMode = 'MANUAL';
   }
 
@@ -609,6 +611,13 @@ export class Robot {
     this.controlMode = mode;
     if (mode === 'MANUAL') {
       this.navController.cancel();
+      this.driveController.stop();
+      if (this.shootingController && this.shootingController.isActive) {
+        this.shootingController.cancel();
+      }
+    } else if (mode === 'AUTONOMOUS') {
+      this.inputController.resetKeys();
+      this.driveController.stop();
     }
   }
 
