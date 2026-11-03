@@ -1,8 +1,11 @@
 /**
  * Dashboard.js
  * Renders the dark-themed engineering HUD, status monitors, telemetry metrics,
- * differential-drive kinematics monitors, and autonomous path planning navigation suite.
+ * differential-drive kinematics monitors, autonomous path planning navigation suite,
+ * and comprehensive simulation performance analytics.
  */
+
+import { AnalyticsCharts } from './AnalyticsCharts.js';
 
 export class Dashboard {
   /**
@@ -17,12 +20,18 @@ export class Dashboard {
     // Cache metric DOM nodes for rapid 60Hz updates
     this.nodes = {};
 
+    // Analytics state (Milestone 8)
+    this.activeAnalyticsTab = 'SHOOTING';
+    this.analyticsCharts = null;
+    this.lastChartUpdate = 0;
+
     this.render();
     this.bindTeleopControls();
     this.bindNavigationControls();
     this.bindShooterAndIntakeControls();
     this.bindVisionControls();
     this.bindAutonomousGameplayControls();
+    this.bindAnalyticsControls();
     this.subscribeTelemetry();
   }
 
@@ -164,6 +173,80 @@ export class Dashboard {
             <div class="grid-item">
               <span class="grid-label">Recoveries</span>
               <span class="grid-value font-mono" id="gameplay-stat-recoveries">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SIMULATION ANALYTICS & PERFORMANCE MONITORING (MILESTONE 8) -->
+        <div class="telemetry-card card-analytics">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"></line>
+                <line x1="12" y1="20" x2="12" y2="4"></line>
+                <line x1="6" y1="20" x2="6" y2="14"></line>
+              </svg>
+              <span>SIMULATION ANALYTICS</span>
+            </div>
+            <div class="analytics-header-actions">
+              <button class="btn-mini-export" id="btn-analytics-json" title="Download Session Analytics as JSON">JSON</button>
+              <button class="btn-mini-export" id="btn-analytics-csv" title="Download Session Analytics as CSV">CSV</button>
+              <button class="btn-mini-export" id="btn-analytics-reset" title="Reset Analytics Tracking Session">Reset</button>
+            </div>
+          </div>
+
+          <!-- Overall KPI Strip (6 Metrics) -->
+          <div class="analytics-kpi-strip">
+            <div class="kpi-card">
+              <span class="kpi-label">Session Time</span>
+              <span class="kpi-value font-mono text-cyan" id="an-kpi-time">0.0s</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Accuracy</span>
+              <span class="kpi-value font-mono text-success" id="an-kpi-accuracy">0.0%</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Total Shots</span>
+              <span class="kpi-value font-mono" id="an-kpi-shots">0 (0 sc)</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Nav Distance</span>
+              <span class="kpi-value font-mono text-cyan" id="an-kpi-nav-dist">0.0m</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Nav Success</span>
+              <span class="kpi-value font-mono text-amber" id="an-kpi-nav-rate">0.0%</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Intake Success</span>
+              <span class="kpi-value font-mono text-success" id="an-kpi-intake-rate">0.0%</span>
+            </div>
+          </div>
+
+          <!-- Category Navigation Tabs -->
+          <div class="analytics-nav-tabs">
+            <button class="btn-analytics-tab active" data-cat="SHOOTING" id="tab-btn-shooting">Shooting</button>
+            <button class="btn-analytics-tab" data-cat="NAVIGATION" id="tab-btn-navigation">Navigation</button>
+            <button class="btn-analytics-tab" data-cat="MOTION" id="tab-btn-motion">Motion/PID</button>
+            <button class="btn-analytics-tab" data-cat="COLLECTION" id="tab-btn-collection">Intake</button>
+            <button class="btn-analytics-tab" data-cat="AUTONOMY" id="tab-btn-autonomy">Autonomy</button>
+          </div>
+
+          <!-- Category Dynamic Detail Grid -->
+          <div class="telemetry-grid" id="analytics-detail-grid">
+            <!-- Dynamically populated per active tab -->
+          </div>
+
+          <!-- Chart Mount Point for Chart.js -->
+          <div id="analytics-charts-mount"></div>
+
+          <!-- History / Detailed Records Container -->
+          <div id="analytics-records-container">
+            <div class="analytics-table-wrap">
+              <table class="analytics-table" id="analytics-records-table">
+                <thead id="analytics-records-thead"></thead>
+                <tbody id="analytics-records-tbody"></tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -825,8 +908,25 @@ export class Dashboard {
       ballPosZ: this.domElement.querySelector('#ball-pos-z'),
       ballSpeed: this.domElement.querySelector('#ball-speed'),
       ballVy: this.domElement.querySelector('#ball-vy'),
-      ballBadge: this.domElement.querySelector('#ball-flight-badge')
+      ballBadge: this.domElement.querySelector('#ball-flight-badge'),
+
+      // Milestone 8 Analytics Nodes
+      anKpiTime: this.domElement.querySelector('#an-kpi-time'),
+      anKpiAccuracy: this.domElement.querySelector('#an-kpi-accuracy'),
+      anKpiShots: this.domElement.querySelector('#an-kpi-shots'),
+      anKpiNavDist: this.domElement.querySelector('#an-kpi-nav-dist'),
+      anKpiNavRate: this.domElement.querySelector('#an-kpi-nav-rate'),
+      anKpiIntakeRate: this.domElement.querySelector('#an-kpi-intake-rate'),
+      anDetailGrid: this.domElement.querySelector('#analytics-detail-grid'),
+      anChartsMount: this.domElement.querySelector('#analytics-charts-mount'),
+      anRecordsTable: this.domElement.querySelector('#analytics-records-table'),
+      anRecordsThead: this.domElement.querySelector('#analytics-records-thead'),
+      anRecordsTbody: this.domElement.querySelector('#analytics-records-tbody')
     };
+
+    if (this.nodes.anChartsMount) {
+      this.analyticsCharts = new AnalyticsCharts(this.nodes.anChartsMount);
+    }
   }
 
   /**
@@ -1134,6 +1234,271 @@ export class Dashboard {
       btnReset.addEventListener('click', () => {
         this.simulation.resetAutonomousGameplay();
       });
+    }
+  }
+
+  /**
+   * Binds analytics tab buttons, export actions, and reset controls.
+   */
+  bindAnalyticsControls() {
+    const tabs = this.domElement.querySelectorAll('.btn-analytics-tab');
+    tabs.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cat = btn.getAttribute('data-cat');
+        if (!cat) return;
+        this.activeAnalyticsTab = cat;
+        tabs.forEach(b => b.classList.toggle('active', b === btn));
+        if (this.analyticsCharts) {
+          this.analyticsCharts.setCategory(cat);
+        }
+      });
+    });
+
+    const btnJson = this.domElement.querySelector('#btn-analytics-json');
+    if (btnJson) {
+      btnJson.addEventListener('click', () => {
+        if (this.simulation) this.simulation.downloadAnalytics('JSON');
+      });
+    }
+
+    const btnCsv = this.domElement.querySelector('#btn-analytics-csv');
+    if (btnCsv) {
+      btnCsv.addEventListener('click', () => {
+        if (this.simulation) this.simulation.downloadAnalytics('CSV');
+      });
+    }
+
+    const btnReset = this.domElement.querySelector('#btn-analytics-reset');
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        if (this.simulation) {
+          this.simulation.resetAnalytics();
+          if (this.analyticsCharts) {
+            this.analyticsCharts.destroyCharts();
+            this.analyticsCharts.setupView();
+          }
+        }
+      });
+    }
+  }
+
+  /**
+   * Renders specific telemetry metrics inside the active analytics tab.
+   * @param {Object} analytics
+   */
+  renderAnalyticsDetailGrid(analytics) {
+    if (!this.nodes.anDetailGrid || !analytics) return;
+    const grid = this.nodes.anDetailGrid;
+
+    switch (this.activeAnalyticsTab) {
+      case 'SHOOTING': {
+        const s = analytics.shooting || {};
+        grid.innerHTML = `
+          <div class="grid-item">
+            <span class="grid-label">Avg Launch Speed</span>
+            <span class="grid-value font-mono text-cyan">${(s.averageLaunchSpeed || 0).toFixed(2)} m/s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Elevation Angle</span>
+            <span class="grid-value font-mono text-amber">${(s.averageLaunchAngle || 0).toFixed(1)}°</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Flight Time</span>
+            <span class="grid-value font-mono">${(s.averageFlightTime || 0).toFixed(2)} s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Shot Interval</span>
+            <span class="grid-value font-mono text-cyan">${(s.averageTimeBetweenShots || 0).toFixed(1)} s</span>
+          </div>
+        `;
+        break;
+      }
+      case 'NAVIGATION': {
+        const n = analytics.navigation || {};
+        grid.innerHTML = `
+          <div class="grid-item">
+            <span class="grid-label">Total Nav Time</span>
+            <span class="grid-value font-mono text-cyan">${(n.totalNavigationTime || 0).toFixed(1)} s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Path Efficiency</span>
+            <span class="grid-value font-mono text-success">${(n.overallPathEfficiency || 0).toFixed(1)}%</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Replans / Obstacles</span>
+            <span class="grid-value font-mono text-amber">${n.replanningEvents || 0} / ${n.obstacleEncounters || 0}</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Time to Target</span>
+            <span class="grid-value font-mono">${(n.averageTimeToTarget || 0).toFixed(1)} s</span>
+          </div>
+        `;
+        break;
+      }
+      case 'MOTION': {
+        const m = analytics.motion || {};
+        grid.innerHTML = `
+          <div class="grid-item">
+            <span class="grid-label">Avg Linear Error</span>
+            <span class="grid-value font-mono text-cyan">${(m.averageLinearError || 0).toFixed(3)} m/s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Max Linear Error</span>
+            <span class="grid-value font-mono text-danger">${(m.maxLinearError || 0).toFixed(2)} m/s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Angular Error</span>
+            <span class="grid-value font-mono text-amber">${(m.averageAngularError || 0).toFixed(3)} rad/s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Step Rise Time</span>
+            <span class="grid-value font-mono">${m.motionResponseTime ? m.motionResponseTime.toFixed(2) + ' s' : '-- s'}</span>
+          </div>
+        `;
+        break;
+      }
+      case 'COLLECTION': {
+        const c = analytics.collection || {};
+        grid.innerHTML = `
+          <div class="grid-item">
+            <span class="grid-label">Total Attempts</span>
+            <span class="grid-value font-mono">${c.totalAttempts || 0}</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Captures / Failures</span>
+            <span class="grid-value font-mono text-success">${c.successfulCollections || 0} <span class="text-danger">/ ${c.failedCollections || 0}</span></span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Avg Duration</span>
+            <span class="grid-value font-mono text-cyan">${(c.averageCollectionDuration || 0).toFixed(2)} s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Retries Count</span>
+            <span class="grid-value font-mono text-amber">${c.collectionRetries || 0}</span>
+          </div>
+        `;
+        break;
+      }
+      case 'AUTONOMY': {
+        const au = analytics.autonomy || {};
+        grid.innerHTML = `
+          <div class="grid-item">
+            <span class="grid-label">Sessions (C/F)</span>
+            <span class="grid-value font-mono text-cyan">${au.completedSessions || 0} <span class="text-muted">/ ${(au.failedSessions || 0) + (au.cancelledSessions || 0)}</span></span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Auto Accuracy</span>
+            <span class="grid-value font-mono text-success">${(au.accuracyPercent || 0).toFixed(1)}%</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Time / Basket</span>
+            <span class="grid-value font-mono text-amber">${(au.averageTimePerBasket || 0).toFixed(1)} s</span>
+          </div>
+          <div class="grid-item">
+            <span class="grid-label">Recovery Rate</span>
+            <span class="grid-value font-mono">${(au.recoverySuccessRate || 0).toFixed(0)}% (${au.recoveryAttempts || 0} att)</span>
+          </div>
+        `;
+        break;
+      }
+    }
+  }
+
+  /**
+   * Populates the historical records table for the active analytics tab.
+   * @param {Object} analytics
+   */
+  renderAnalyticsRecordsTable(analytics) {
+    if (!this.nodes.anRecordsThead || !this.nodes.anRecordsTbody || !analytics) return;
+
+    const thead = this.nodes.anRecordsThead;
+    const tbody = this.nodes.anRecordsTbody;
+
+    switch (this.activeAnalyticsTab) {
+      case 'SHOOTING': {
+        const hist = analytics.shooting?.shotHistory || [];
+        thead.innerHTML = `<tr><th>#</th><th>Time</th><th>Mode</th><th>Outcome</th><th>Speed</th><th>Angle</th><th>RPM</th><th>Flight</th></tr>`;
+        if (hist.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); font-style: italic;">No shots recorded yet</td></tr>`;
+        } else {
+          tbody.innerHTML = hist.slice(0, 5).map(s => `
+            <tr>
+              <td>#${s.shotNumber}</td>
+              <td>${new Date(s.timestamp).toLocaleTimeString([], { hour12: false, minute: '2-digit', second: '2-digit' })}</td>
+              <td>${s.mode}</td>
+              <td class="${s.isScored ? 'text-success' : 'text-danger'}">${s.outcome}</td>
+              <td>${s.launchSpeed != null ? s.launchSpeed.toFixed(1) + 'm/s' : '--'}</td>
+              <td>${s.launchAngle != null ? s.launchAngle.toFixed(0) + '°' : '--'}</td>
+              <td>${s.flywheelRPM != null ? Math.round(s.flywheelRPM) : '--'}</td>
+              <td>${s.flightDuration != null ? s.flightDuration.toFixed(2) + 's' : '--'}</td>
+            </tr>
+          `).join('');
+        }
+        break;
+      }
+      case 'NAVIGATION': {
+        const hist = analytics.navigation?.taskHistory || [];
+        thead.innerHTML = `<tr><th>#</th><th>Mode</th><th>Status</th><th>Planned</th><th>Actual</th><th>Efficiency</th><th>Duration</th></tr>`;
+        if (hist.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); font-style: italic;">No navigation tasks recorded yet</td></tr>`;
+        } else {
+          tbody.innerHTML = hist.slice(0, 5).map(t => `
+            <tr>
+              <td>#${t.taskNumber}</td>
+              <td>${t.mode}</td>
+              <td class="${t.status === 'GOAL_REACHED' ? 'text-success' : 'text-danger'}">${t.status}</td>
+              <td>${t.plannedPathLength.toFixed(1)}m</td>
+              <td>${t.actualTravelledDistance.toFixed(1)}m</td>
+              <td class="text-cyan">${t.pathEfficiency.toFixed(0)}%</td>
+              <td>${t.duration.toFixed(1)}s</td>
+            </tr>
+          `).join('');
+        }
+        break;
+      }
+      case 'COLLECTION': {
+        const hist = analytics.collection?.attemptHistory || [];
+        thead.innerHTML = `<tr><th>#</th><th>Mode</th><th>Status</th><th>Duration</th><th>Retries</th></tr>`;
+        if (hist.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); font-style: italic;">No collection attempts recorded yet</td></tr>`;
+        } else {
+          tbody.innerHTML = hist.slice(0, 5).map(a => `
+            <tr>
+              <td>#${a.attemptNumber}</td>
+              <td>${a.mode}</td>
+              <td class="${a.status === 'SUCCESS' ? 'text-success' : 'text-danger'}">${a.status}</td>
+              <td>${a.duration.toFixed(2)}s</td>
+              <td>${a.retries}</td>
+            </tr>
+          `).join('');
+        }
+        break;
+      }
+      case 'AUTONOMY': {
+        const hist = analytics.autonomy?.sessionHistory || [];
+        thead.innerHTML = `<tr><th>#</th><th>Mode</th><th>Status</th><th>Duration</th><th>Scored</th><th>Attempts</th><th>Recoveries</th></tr>`;
+        if (hist.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-muted); font-style: italic;">No autonomous sessions recorded yet</td></tr>`;
+        } else {
+          tbody.innerHTML = hist.slice(0, 5).map(sess => `
+            <tr>
+              <td>#${sess.sessionNumber}</td>
+              <td>${sess.mode}</td>
+              <td class="${sess.status === 'COMPLETED' ? 'text-success' : 'text-danger'}">${sess.status}</td>
+              <td>${sess.duration.toFixed(1)}s</td>
+              <td class="text-success">${sess.successfulShots}</td>
+              <td>${sess.totalAttempts}</td>
+              <td>${sess.recoveryAttempts}</td>
+            </tr>
+          `).join('');
+        }
+        break;
+      }
+      default: {
+        thead.innerHTML = '';
+        tbody.innerHTML = '';
+        break;
+      }
     }
   }
 
@@ -1570,6 +1935,45 @@ export class Dashboard {
 
       this.renderVisionFeed(v);
     }
+
+    // Milestone 8 Analytics Performance Monitoring Readouts
+    if (data.analytics) {
+      const an = data.analytics;
+      const sh = an.shooting || {};
+      const nav = an.navigation || {};
+      const col = an.collection || {};
+
+      if (this.nodes.anKpiTime) {
+        this.nodes.anKpiTime.textContent = `${(an.sessionDuration || 0).toFixed(1)}s`;
+      }
+      if (this.nodes.anKpiAccuracy) {
+        this.nodes.anKpiAccuracy.textContent = `${(sh.accuracyPercent || 0).toFixed(1)}%`;
+      }
+      if (this.nodes.anKpiShots) {
+        this.nodes.anKpiShots.textContent = `${sh.totalAttempts || 0} (${sh.successfulBaskets || 0} sc)`;
+      }
+      if (this.nodes.anKpiNavDist) {
+        this.nodes.anKpiNavDist.textContent = `${(nav.totalDistanceTravelled || 0).toFixed(1)}m`;
+      }
+      if (this.nodes.anKpiNavRate) {
+        this.nodes.anKpiNavRate.textContent = `${(nav.navigationSuccessRate || 0).toFixed(1)}%`;
+      }
+      if (this.nodes.anKpiIntakeRate) {
+        this.nodes.anKpiIntakeRate.textContent = `${(col.collectionSuccessRate || 0).toFixed(1)}%`;
+      }
+
+      this.renderAnalyticsDetailGrid(an);
+      this.renderAnalyticsRecordsTable(an);
+
+      // Throttled Chart.js visuals refresh (every 250ms / 4 Hz)
+      const now = Date.now();
+      if (now - this.lastChartUpdate >= 250) {
+        this.lastChartUpdate = now;
+        if (this.analyticsCharts) {
+          this.analyticsCharts.update(data);
+        }
+      }
+    }
   }
 
   /**
@@ -1673,5 +2077,15 @@ export class Dashboard {
    */
   getControlsSlot() {
     return this.domElement.querySelector('#controls-slot');
+  }
+
+  /**
+   * Destroys dashboard and releases chart resources.
+   */
+  destroy() {
+    if (this.analyticsCharts) {
+      this.analyticsCharts.destroy();
+      this.analyticsCharts = null;
+    }
   }
 }

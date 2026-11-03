@@ -43,6 +43,7 @@ export class HoopDetector {
     // Callbacks
     this.onScoreCallbacks = [];
     this.onMissCallbacks = [];
+    this.onShotFiredCallbacks = [];
   }
 
   /**
@@ -75,6 +76,10 @@ export class HoopDetector {
     };
     this.prevBallPos = null;
     this.updateAccuracy();
+
+    if (this.onShotFiredCallbacks) {
+      this.onShotFiredCallbacks.forEach(cb => cb(this.stats, metadata));
+    }
   }
 
   /**
@@ -264,6 +269,15 @@ export class HoopDetector {
   set lastShotResult(val) { this.stats.lastShotResult = val; }
   get lastDetailedResult() { return this.stats.lastDetailedResult; }
   set lastDetailedResult(val) { this.stats.lastDetailedResult = val; }
+
+  /**
+   * Registers a listener callback for newly fired shots.
+   */
+  onShotFired(callback) {
+    if (typeof callback === 'function') {
+      this.onShotFiredCallbacks.push(callback);
+    }
+  }
 
   /**
    * Registers a listener callback for successful baskets.

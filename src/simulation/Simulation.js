@@ -19,6 +19,7 @@ import { HoopDetector } from '../robot/HoopDetector.js';
 import { AutonomousShooterWorkflow } from '../navigation/AutonomousShooterWorkflow.js';
 import { VisionManager } from '../vision/VisionManager.js';
 import { AutonomousGameplayController } from '../autonomy/AutonomousGameplayController.js';
+import { AnalyticsManager } from '../analytics/AnalyticsManager.js';
 
 export class Simulation {
   /**
@@ -55,6 +56,7 @@ export class Simulation {
     this.shooterWorkflow = null;
     this.visionManager = null;
     this.gameplayController = null;
+    this.analyticsManager = null;
 
     // Animation frame handle
     this.animationFrameId = null;
@@ -113,6 +115,11 @@ export class Simulation {
       hoopDetector: this.hoopDetector,
       basketball: this.basketball
     });
+
+    // Performance Analytics Subsystem (Milestone 8)
+    this.analyticsManager = new AnalyticsManager();
+    this.analyticsManager.attachHoopDetector(this.hoopDetector);
+    this.analyticsManager.attachAutonomousController(this.gameplayController);
 
     // Autonomous Navigation Path Visualizer
     this.pathVisualizer = new PathVisualizer(this.scene);
@@ -265,6 +272,16 @@ export class Simulation {
       }
     }
 
+    // Step simulation analytics and performance monitoring (Milestone 8)
+    if (this.analyticsManager && this.robot) {
+      this.analyticsManager.update(
+        deltaTime,
+        this.robot,
+        this.robot.navController,
+        this.gameplayController
+      );
+    }
+
     // Update smooth camera controls
     if (this.controls) {
       this.controls.update();
@@ -350,7 +367,8 @@ export class Simulation {
       shooterWorkflow: this.shooterWorkflow ? this.shooterWorkflow.getTelemetry() : {},
       shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {},
       vision: this.visionManager ? this.visionManager.getTelemetry() : {},
-      autonomy: this.gameplayController ? this.gameplayController.getStatus() : {}
+      autonomy: this.gameplayController ? this.gameplayController.getStatus() : {},
+      analytics: this.analyticsManager ? this.analyticsManager.getTelemetry() : {}
     };
 
     for (let i = 0; i < this.telemetryCallbacks.length; i++) {
@@ -411,7 +429,41 @@ export class Simulation {
     if (this.visionManager) this.visionManager.reset();
     if (this.gameplayController) this.gameplayController.reset();
     if (this.pathVisualizer) this.pathVisualizer.clear();
+    if (this.analyticsManager) this.analyticsManager.reset();
     console.log('[Simulation] Simulation reset to initial state.');
+  }
+
+  /**
+   * Resets simulation analytics tracking session independently.
+   */
+  resetAnalytics() {
+    if (this.analyticsManager) {
+      this.analyticsManager.reset();
+    }
+  }
+
+  /**
+   * Exports session analytics formatted as JSON string.
+   */
+  exportAnalyticsJSON() {
+    return this.analyticsManager ? this.analyticsManager.exportJSON() : '{}';
+  }
+
+  /**
+   * Exports session analytics formatted as CSV string.
+   */
+  exportAnalyticsCSV() {
+    return this.analyticsManager ? this.analyticsManager.exportCSV() : '';
+  }
+
+  /**
+   * Triggers browser download for analytics in JSON or CSV format.
+   * @param {'JSON'|'CSV'} format
+   */
+  downloadAnalytics(format = 'JSON') {
+    if (this.analyticsManager) {
+      this.analyticsManager.downloadExport(format);
+    }
   }
 
   /**
