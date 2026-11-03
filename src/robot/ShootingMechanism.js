@@ -35,6 +35,7 @@ export class ShootingMechanism {
 
     // Target ballistic speed (m/s) and flywheel RPM
     this.targetLaunchSpeed = 8.5; // m/s
+    this.customSpeedOverride = null;
     this.currentFlywheelSpeed = 0.0; // rad/s
     this.flywheelAngle = 0.0;
 
@@ -76,6 +77,7 @@ export class ShootingMechanism {
 
     if (customSpeed && customSpeed > 0) {
       this.targetLaunchSpeed = customSpeed;
+      this.customSpeedOverride = customSpeed;
     }
 
     this.state = 'SPINNING_UP';
@@ -124,6 +126,7 @@ export class ShootingMechanism {
   cancel() {
     this.state = 'IDLE';
     this.timer = 0.0;
+    this.customSpeedOverride = null;
     this.statusMessage = 'Shooter idle';
   }
 
@@ -137,7 +140,9 @@ export class ShootingMechanism {
    * @returns {boolean} Whether firing succeeded
    */
   fire(robot, basketball, hoopDetector = null, hoopTarget = null) {
-    if (!basketball || !robot) {
+    // Resolve the active basketball to fire (prioritize captured ball from intake)
+    const ballToShoot = (robot.intake && robot.intake.capturedBall) ? robot.intake.capturedBall : basketball;
+    if (!ballToShoot || !robot) {
       this.lastRejectReason = 'Missing robot or basketball reference';
       this.statusMessage = 'Firing rejected: missing references';
       return false;
@@ -179,15 +184,25 @@ export class ShootingMechanism {
     const solution = this.calculator.calculateSolution(muzzleWorld, target, this.launchAngleDeg);
 
     if (solution.valid) {
-      launchVel = solution.launchVelocity;
+      if (this.customSpeedOverride && this.customSpeedOverride > 0 && solution.speed > 0) {
+        const speedScale = this.customSpeedOverride / solution.speed;
+        launchVel = {
+          x: solution.launchVelocity.x * speedScale,
+          y: solution.launchVelocity.y * speedScale,
+          z: solution.launchVelocity.z * speedScale
+        };
+      } else {
+        launchVel = solution.launchVelocity;
+      }
     } else {
-      // Direction forward along robot heading
       const theta = (this.launchAngleDeg * Math.PI) / 180;
-      const v0 = this.targetLaunchSpeed;
+      const v0 = this.customSpeedOverride || this.targetLaunchSpeed || 8.5;
+      const vr0 = v0 * Math.cos(theta);
+      const vy0 = v0 * Math.sin(theta);
       launchVel = {
-        x: v0 * Math.cos(theta) * cosH,
-        y: v0 * Math.sin(theta),
-        z: -v0 * Math.cos(theta) * sinH
+        x: vr0 * cosH,
+        y: vy0,
+        z: -vr0 * sinH
       };
     }
 
@@ -199,35 +214,54 @@ export class ShootingMechanism {
       z: launchVel.z + (robotVel.z || 0)
     };
 
-    // 1. Release ball from robot containment and restore solid physics & gravity
+    // 1. Release ball from robot containment and transition ball lifecycle to IN_FLIGHT
     if (robot.intake) {
-      robot.intake.releaseBall(basketball);
+      robot.intake.releaseBall(ballToShoot);
       robot.intake.ballState = 'IN_FLIGHT';
     }
 
+    if (typeof ballToShoot.setState === 'function') {
+      ballToShoot.setState('IN_FLIGHT');
+      ballToShoot.shotCooldownTimer = 1.5;
+    } else {
+      ballToShoot.state = 'IN_FLIGHT';
+      ballToShoot.isPossessed = false;
+      ballToShoot.isAvailable = false;
+      ballToShoot.shotCooldownTimer = 1.5;
+    }
+
     // 2. Position ball at muzzle exit and apply launch velocity into Rapier physics
-    if (basketball.rigidBody) {
-      basketball.rigidBody.setTranslation(muzzleWorld, true);
-      basketball.rigidBody.setLinvel(totalLaunchVel, true);
+    if (ballToShoot.rigidBody) {
+      ballToShoot.rigidBody.setTranslation(muzzleWorld, true);
+      ballToShoot.rigidBody.setLinvel(totalLaunchVel, true);
 
       // Backspin around lateral horizontal axis perpendicular to shot direction
       const backspinSpeed = 18.0; // rad/s (~170 RPM)
-      basketball.rigidBody.setAngvel({
+      ballToShoot.rigidBody.setAngvel({
         x: -sinH * backspinSpeed,
         y: 0,
         z: -cosH * backspinSpeed
       }, true);
-      basketball.rigidBody.wakeUp();
+      ballToShoot.rigidBody.wakeUp();
     }
 
     // 3. Notify hoop detector to begin tracking trajectory for scoring
     if (hoopDetector) {
-      hoopDetector.notifyShotFired();
+      hoopDetector.notifyShotFired({
+        id: Date.now(),
+        ball: ballToShoot,
+        distance: solution.horizontalDistance || Math.hypot(target.x - muzzleWorld.x, target.z - muzzleWorld.z),
+        launchSpeed: (this.customSpeedOverride && this.customSpeedOverride > 0) ? this.customSpeedOverride : (solution.valid ? solution.speed : 8.5),
+        launchAngleDeg: this.launchAngleDeg,
+        predictedApex: solution.apexHeight || (muzzleWorld.y + 2.5),
+        predictedFlightTime: solution.flightTime || 1.1
+      });
     }
 
     // Transition to cooldown
     this.timer = 0.0;
     this.state = 'COOLDOWN';
+    this.customSpeedOverride = null;
     return true;
   }
 
@@ -283,6 +317,7 @@ export class ShootingMechanism {
     this.timer = 0.0;
     this.currentFlywheelSpeed = 0.0;
     this.flywheelAngle = 0.0;
+    this.customSpeedOverride = null;
     this.statusMessage = 'Shooter idle';
     this.lastRejectReason = null;
   }

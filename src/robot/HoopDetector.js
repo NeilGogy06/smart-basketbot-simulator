@@ -59,6 +59,7 @@ export class HoopDetector {
 
     this.activeShot = {
       id: metadata.id ?? Date.now(),
+      ball: metadata.ball ?? null,
       distance: metadata.distance ?? 0,
       launchSpeed: metadata.launchSpeed ?? 0,
       launchAngleDeg: metadata.launchAngleDeg ?? 0,
@@ -123,9 +124,9 @@ export class HoopDetector {
 
     // 2. Check downward rim penetration
     // The ball must cross downward through Y = rimY plane while within inner rim cylinder
-    const crossedRimPlaneDownward = (prevY >= this.rimY && ballPos.y < this.rimY && ballVel.y < 0);
-    // Tolerance for inner rim cylinder penetration (radius ~ 0.225m)
-    const isInsideRimCylinder = horizDist < (this.rimRadius + 0.02);
+    const crossedRimPlaneDownward = (prevY >= this.rimY && ballPos.y < this.rimY && ballVel.y < -0.05);
+    // Inner rim cylinder opening: inner radius is ~0.213m. Ball center must pass inside the rim circle.
+    const isInsideRimCylinder = horizDist < (this.rimRadius - 0.015);
 
     if (crossedRimPlaneDownward && isInsideRimCylinder && this.activeShot.passedAboveRim) {
       this.activeShot.enteredRimPlane = true;
@@ -134,15 +135,15 @@ export class HoopDetector {
     }
 
     // 3. Confirm score when ball exits net downward after entering rim
-    if (this.activeShot.enteredRimPlane && ballPos.y < (this.rimY - 0.25) && ballPos.y > 1.0) {
+    if (this.activeShot.enteredRimPlane && ballPos.y < (this.rimY - 0.20) && ballPos.y > 0.8) {
       return this.resolveShot(true);
     }
 
     // 4. Check for missed shot:
-    // If the ball hit the floor (Y <= 0.2m) or has been flying for too long (> 6s)
+    // If the ball hit the floor (Y <= floor threshold) or has been flying for too long (> 5.5s)
     // without scoring
-    const hitFloor = ballPos.y <= (SIMULATION_CONFIG.ball.radius + 0.05);
-    const timeout = this.activeShot.flightDuration > 6.0;
+    const hitFloor = ballPos.y <= (SIMULATION_CONFIG.ball.radius + 0.06);
+    const timeout = this.activeShot.flightDuration > 5.5;
 
     if ((hitFloor || timeout) && !this.activeShot.enteredRimPlane) {
       return this.resolveShot(false);
@@ -162,6 +163,11 @@ export class HoopDetector {
     if (!this.activeShot || this.activeShot.state === 'RESOLVED') return 'IDLE';
 
     this.activeShot.state = 'RESOLVED';
+
+    // Update ball state if reference is stored
+    if (this.activeShot.ball && typeof this.activeShot.ball.setState === 'function') {
+      this.activeShot.ball.setState(scored ? 'SCORED' : 'MISSED');
+    }
 
     // Point for trajectory error evaluation
     const evalPt = this.activeShot.rimLevelPoint || this.activeShot.closestPoint || (this.prevBallPos ?? { x: this.rimX, y: this.rimY, z: this.rimZ });

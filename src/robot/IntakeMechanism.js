@@ -39,6 +39,7 @@ export class IntakeMechanism {
 
     // Ball capture lock reference
     this.isBallCaptured = false;
+    this.capturedBall = null;
   }
 
   /**
@@ -87,8 +88,18 @@ export class IntakeMechanism {
     this.state = 'BALL_CAPTURED';
     this.ballState = 'CAPTURED';
     this.currentRollerSpeed = 0.0;
+    this.capturedBall = basketball;
 
     if (basketball) {
+      if (typeof basketball.setState === 'function') {
+        basketball.setState('POSSESSED');
+        basketball.possessedBy = robot;
+      } else {
+        basketball.state = 'POSSESSED';
+        basketball.isPossessed = true;
+        basketball.possessedBy = robot;
+      }
+
       if (basketball.collider) {
         basketball.collider.setSensor(true);
       }
@@ -105,20 +116,32 @@ export class IntakeMechanism {
    * @param {Object} [basketball]
    */
   releaseBall(basketball = null) {
+    const targetBall = basketball || this.capturedBall;
     this.isBallCaptured = false;
     this.opticalSensorActive = false;
     this.ballState = 'FIELD';
+    this.capturedBall = null;
+
     if (this.state === 'BALL_CAPTURED') {
       this.state = 'IDLE';
     }
 
-    if (basketball) {
-      if (basketball.collider) {
-        basketball.collider.setSensor(false);
+    if (targetBall) {
+      if (typeof targetBall.setState === 'function') {
+        if (targetBall.state === 'POSSESSED') {
+          targetBall.setState('AVAILABLE');
+        }
+      } else {
+        targetBall.isPossessed = false;
+        targetBall.possessedBy = null;
       }
-      if (basketball.rigidBody) {
-        basketball.rigidBody.setGravityScale(1.0, true);
-        basketball.rigidBody.wakeUp();
+
+      if (targetBall.collider) {
+        targetBall.collider.setSensor(false);
+      }
+      if (targetBall.rigidBody) {
+        targetBall.rigidBody.setGravityScale(1.0, true);
+        targetBall.rigidBody.wakeUp();
       }
     }
   }
@@ -133,13 +156,15 @@ export class IntakeMechanism {
     this.ballState = 'FIELD';
     this.currentRollerSpeed = 0.0;
     this.rollerAngle = 0.0;
+    this.capturedBall = null;
   }
 
   /**
    * Updates intake state, checks optical sensor, guides ball into cradle, and rotates roller mesh.
+   * Supports single Basketball entity or an array of Basketball entities.
    * @param {number} dt Frame delta time in seconds
    * @param {Object} robot Reference to Robot instance
-   * @param {Object} basketball Reference to Basketball instance
+   * @param {Array<Object>|Object} basketball Reference to Basketball instance or array
    */
   update(dt, robot, basketball) {
     if (!basketball || !robot) return;
@@ -147,89 +172,117 @@ export class IntakeMechanism {
     // 1. Advance roller animation
     this.rollerAngle += this.currentRollerSpeed * dt;
 
-    const ballPos = basketball.getPosition();
+    // Normalize input to array
+    const ballList = Array.isArray(basketball) ? basketball : [basketball];
+
+    // Update each ball's state timer and evaluate floor settling
+    for (const b of ballList) {
+      if (typeof b.update === 'function') {
+        b.update(dt);
+      }
+    }
+
+    // If ballState was IN_FLIGHT, check if any previously fired ball has now settled
+    if (this.ballState === 'IN_FLIGHT') {
+      const anyInFlight = ballList.some(b => b.state === 'IN_FLIGHT' || b.shotCooldownTimer > 0);
+      if (!anyInFlight) {
+        this.ballState = 'FIELD';
+      }
+    }
+
     const robotPos = robot.getPosition();
     const robotHeading = robot.getHeading();
-
-    // 2. Transform ball position into robot local frame
-    const dx = ballPos.x - robotPos.x;
-    const dz = ballPos.z - robotPos.z;
-    const dy = ballPos.y - robotPos.y;
-
     const cosH = Math.cos(robotHeading);
     const sinH = Math.sin(robotHeading);
 
-    // Local coordinates: forward along local X, lateral along local Z
-    const localX = cosH * dx - sinH * dz;
-    const localZ = sinH * dx + cosH * dz;
-    const localY = dy;
-
-    // 3. Distance to optical sensor / containment cradle
-    const distToCradle = Math.hypot(
-      localX - this.cradleLocalPos.x,
-      localY - this.cradleLocalPos.y,
-      localZ - this.cradleLocalPos.z
-    );
-
-    // 4. If ball is already captured, lock its physical transform to containment cradle
+    // 2. If ball is already captured, lock its physical transform to containment cradle
     if (this.isBallCaptured) {
-      this.opticalSensorActive = true;
-      this.ballState = 'CAPTURED';
-      this.state = 'BALL_CAPTURED';
-      this.currentRollerSpeed = 0.0;
+      const ballToHold = this.capturedBall || ballList.find(b => b.isPossessed || b.state === 'POSSESSED') || ballList[0];
+      if (ballToHold) {
+        this.opticalSensorActive = true;
+        this.ballState = 'CAPTURED';
+        this.state = 'BALL_CAPTURED';
+        this.currentRollerSpeed = 0.0;
 
-      if (basketball.collider && !basketball.collider.isSensor()) {
-        basketball.collider.setSensor(true);
-      }
-      if (basketball.rigidBody) {
-        basketball.rigidBody.setGravityScale(0.0, true);
+        if (ballToHold.collider && !ballToHold.collider.isSensor()) {
+          ballToHold.collider.setSensor(true);
+        }
+        if (ballToHold.rigidBody) {
+          ballToHold.rigidBody.setGravityScale(0.0, true);
 
-        // Calculate world coordinates of the containment cradle
-        const cradleWorldX = robotPos.x + cosH * this.cradleLocalPos.x + sinH * this.cradleLocalPos.z;
-        const cradleWorldY = robotPos.y + this.cradleLocalPos.y;
-        const cradleWorldZ = robotPos.z - sinH * this.cradleLocalPos.x + cosH * this.cradleLocalPos.z;
+          // Calculate world coordinates of containment cradle
+          const cradleWorldX = robotPos.x + cosH * this.cradleLocalPos.x + sinH * this.cradleLocalPos.z;
+          const cradleWorldY = robotPos.y + this.cradleLocalPos.y;
+          const cradleWorldZ = robotPos.z - sinH * this.cradleLocalPos.x + cosH * this.cradleLocalPos.z;
 
-        basketball.rigidBody.setTranslation({ x: cradleWorldX, y: cradleWorldY, z: cradleWorldZ }, true);
-        const rVel = robot.getVelocity();
-        basketball.rigidBody.setLinvel({ x: rVel.x, y: rVel.y, z: rVel.z }, true);
-        basketball.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          ballToHold.rigidBody.setTranslation({ x: cradleWorldX, y: cradleWorldY, z: cradleWorldZ }, true);
+          const rVel = robot.getVelocity();
+          ballToHold.rigidBody.setLinvel({ x: rVel.x, y: rVel.y, z: rVel.z }, true);
+          ballToHold.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+        }
       }
       return;
     }
 
     this.opticalSensorActive = false;
 
-    // 5. If INTAKING, detect ball in front intake zone
-    if (this.state === 'INTAKING' && this.ballState === 'FIELD') {
-      const inFrontBumper = (localX >= 0.05 && localX <= 0.85);
-      const inIntakeWidth = (Math.abs(localZ) <= 0.35);
-      const atGroundHeight = (Math.abs(localY - this.cradleLocalPos.y) <= 0.35);
+    // 3. If INTAKING, scan candidate available balls in front intake zone
+    if (this.state === 'INTAKING' && (this.ballState === 'FIELD' || this.ballState === 'IDLE')) {
+      for (const candidateBall of ballList) {
+        // Enforce possession lifecycle gating:
+        // Do not attempt to collect balls that are currently possessed, in flight, or in post-shot cooldown
+        if (candidateBall.isPossessed) continue;
+        if (candidateBall.state && candidateBall.state !== 'AVAILABLE' && candidateBall.state !== 'FIELD') continue;
+        if (candidateBall.shotCooldownTimer && candidateBall.shotCooldownTimer > 0) continue;
 
-      if (inFrontBumper && inIntakeWidth && atGroundHeight) {
-        // Front intake rollers are at localX = 0.49m, bumper edge at 0.38m
-        // When ball touches front rollers or bumper cutout (localX <= 0.58m or distToCradle <= 0.45m):
-        if (localX <= 0.58 || distToCradle <= 0.45) {
-          this.captureBall(basketball, robot);
-        } else {
-          // Physical intake action: apply pull force drawing ball toward intake opening
-          const pullSpeed = 3.0;
-          const targetWorldX = robotPos.x + cosH * this.cradleLocalPos.x + sinH * this.cradleLocalPos.z;
-          const targetWorldY = robotPos.y + this.cradleLocalPos.y;
-          const targetWorldZ = robotPos.z - sinH * this.cradleLocalPos.x + cosH * this.cradleLocalPos.z;
+        const bPos = candidateBall.getPosition();
+        const dx = bPos.x - robotPos.x;
+        const dz = bPos.z - robotPos.z;
+        const dy = bPos.y - robotPos.y;
 
-          const pullDirX = targetWorldX - ballPos.x;
-          const pullDirY = targetWorldY - ballPos.y;
-          const pullDirZ = targetWorldZ - ballPos.z;
-          const pullDist = Math.hypot(pullDirX, pullDirY, pullDirZ);
+        // Local coordinates: forward along local X, lateral along local Z
+        const localX = cosH * dx - sinH * dz;
+        const localZ = sinH * dx + cosH * dz;
+        const localY = dy;
 
-          if (pullDist > 0.01 && basketball.rigidBody) {
-            const inv = 1 / pullDist;
-            basketball.rigidBody.wakeUp();
-            basketball.rigidBody.setLinvel({
-              x: pullDirX * inv * pullSpeed,
-              y: Math.max(0.1, pullDirY * inv * pullSpeed),
-              z: pullDirZ * inv * pullSpeed
-            }, true);
+        const distToCradle = Math.hypot(
+          localX - this.cradleLocalPos.x,
+          localY - this.cradleLocalPos.y,
+          localZ - this.cradleLocalPos.z
+        );
+
+        const inFrontBumper = (localX >= 0.05 && localX <= 0.85);
+        const inIntakeWidth = (Math.abs(localZ) <= 0.38);
+        const atGroundHeight = (Math.abs(localY - this.cradleLocalPos.y) <= 0.38);
+
+        if (inFrontBumper && inIntakeWidth && atGroundHeight) {
+          // Front intake rollers are at localX = 0.49m, bumper edge at 0.38m
+          // When ball touches front rollers or cradle threshold:
+          if (localX <= 0.58 || distToCradle <= 0.45) {
+            this.captureBall(candidateBall, robot);
+            return;
+          } else {
+            // Apply suction pull drawing ball towards cradle
+            const pullSpeed = 3.2;
+            const targetWorldX = robotPos.x + cosH * this.cradleLocalPos.x + sinH * this.cradleLocalPos.z;
+            const targetWorldY = robotPos.y + this.cradleLocalPos.y;
+            const targetWorldZ = robotPos.z - sinH * this.cradleLocalPos.x + cosH * this.cradleLocalPos.z;
+
+            const pullDirX = targetWorldX - bPos.x;
+            const pullDirY = targetWorldY - bPos.y;
+            const pullDirZ = targetWorldZ - bPos.z;
+            const pullDist = Math.hypot(pullDirX, pullDirY, pullDirZ);
+
+            if (pullDist > 0.01 && candidateBall.rigidBody) {
+              const inv = 1 / pullDist;
+              candidateBall.rigidBody.wakeUp();
+              candidateBall.rigidBody.setLinvel({
+                x: pullDirX * inv * pullSpeed,
+                y: Math.max(0.1, pullDirY * inv * pullSpeed),
+                z: pullDirZ * inv * pullSpeed
+              }, true);
+            }
+            return;
           }
         }
       }
@@ -244,6 +297,7 @@ export class IntakeMechanism {
       state: this.state,
       ballState: this.ballState,
       hasBall: this.isBallCaptured,
+      capturedBallId: this.capturedBall?.id || null,
       opticalSensorActive: this.opticalSensorActive,
       rollerSpeedRpm: (this.currentRollerSpeed * 30) / Math.PI
     };

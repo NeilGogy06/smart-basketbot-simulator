@@ -133,6 +133,8 @@ export class ObjectTracker {
       z: track.worldPosition.z * (1 - this.smoothingAlpha) + detection.worldPosition.z * this.smoothingAlpha
     };
 
+    track.reference = detection.reference || track.reference || null;
+    track.instanceId = detection.instanceId || track.instanceId || null;
     track.relativePosition = { ...detection.relativePosition };
     track.distance = detection.distance;
     track.azimuthDeg = detection.azimuthDeg;
@@ -162,6 +164,8 @@ export class ObjectTracker {
       id: trackId,
       idNum: idNum,
       type: 'BASKETBALL',
+      instanceId: detection.instanceId || null,
+      reference: detection.reference || null,
       state: 'TRACKED',
       status: 'TRACKED',
       isVisible: true,

@@ -94,6 +94,16 @@ export class DifferentialDriveController {
   }
 
   /**
+   * Compatibility alias for setTargetVelocity.
+   * Commands target linear forward speed and yaw angular velocity.
+   * @param {number} linearVelocity Target linear speed along local X (m/s)
+   * @param {number} angularVelocity Target yaw rate around local Y (rad/s)
+   */
+  setDriveVelocities(linearVelocity, angularVelocity) {
+    return this.setTargetVelocity(linearVelocity, angularVelocity);
+  }
+
+  /**
    * Commands the robot to face and hold a target heading while optionally translating.
    * Switches controller into HEADING_HOLD mode.
    * @param {number} headingRad Desired absolute heading in radians
@@ -102,7 +112,16 @@ export class DifferentialDriveController {
   setTargetHeading(headingRad, linearVelocity = 0.0) {
     if (this.mode === 'E_STOP') return;
 
-    this.targetHeadingRad = RobotKinematics.normalizeAngle(headingRad);
+    const normalized = RobotKinematics.normalizeAngle(headingRad);
+    const targetChanged = Math.abs(RobotKinematics.normalizeAngle(normalized - this.targetHeadingRad)) > 0.04;
+    const modeChanged = this.mode !== 'HEADING_HOLD';
+
+    if (modeChanged || targetChanged) {
+      // Reset derivative state so setpoint changes do not cause violent derivative spikes
+      this.headingPID.hasRun = false;
+    }
+
+    this.targetHeadingRad = normalized;
     this.targetLinearVelocity = Math.max(-this.maxLinearVelocity, Math.min(this.maxLinearVelocity, linearVelocity));
     this.mode = 'HEADING_HOLD';
   }
@@ -143,6 +162,7 @@ export class DifferentialDriveController {
     this.targetLinearVelocity = 0.0;
     this.targetAngularVelocity = 0.0;
     this.mode = 'STOPPED';
+    this.headingPID.reset();
   }
 
   /**

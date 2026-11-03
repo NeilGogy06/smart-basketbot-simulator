@@ -1541,7 +1541,7 @@ export class Dashboard {
       const st = auto.state || 'IDLE';
 
       if (this.nodes.gameplayBadge) {
-        this.nodes.gameplayBadge.textContent = st;
+        let badgeText = st;
         if (st === 'COMPLETED') {
           this.nodes.gameplayBadge.className = 'badge badge-green';
         } else if (st === 'FAILED' || st === 'CANCELLED') {
@@ -1550,11 +1550,15 @@ export class Dashboard {
           this.nodes.gameplayBadge.className = 'badge badge-amber';
         } else if (st === 'RECOVERING') {
           this.nodes.gameplayBadge.className = 'badge badge-amber';
+          badgeText = 'RECOVERING';
         } else if (st !== 'IDLE') {
           this.nodes.gameplayBadge.className = 'badge badge-cyan';
+          badgeText = 'RUNNING';
         } else {
           this.nodes.gameplayBadge.className = 'badge badge-slate';
+          badgeText = 'IDLE';
         }
+        this.nodes.gameplayBadge.textContent = badgeText;
       }
 
       if (this.nodes.gameplayState) {
@@ -1566,9 +1570,14 @@ export class Dashboard {
       }
 
       if (this.nodes.gameplayErrorBanner) {
-        if (st === 'RECOVERING' || st === 'FAILED') {
+        if (st === 'RECOVERING') {
           this.nodes.gameplayErrorBanner.style.display = 'block';
-          this.nodes.gameplayErrorBanner.textContent = auto.statusMessage || 'Recovery action underway';
+          this.nodes.gameplayErrorBanner.className = 'error-banner banner-warning';
+          this.nodes.gameplayErrorBanner.textContent = `[RECOVERY] ${auto.statusMessage} (Automatic corrective action in progress)`;
+        } else if (st === 'FAILED') {
+          this.nodes.gameplayErrorBanner.style.display = 'block';
+          this.nodes.gameplayErrorBanner.className = 'error-banner banner-danger';
+          this.nodes.gameplayErrorBanner.textContent = `[FAILED] ${auto.statusMessage} (Manual intervention or reset required)`;
         } else {
           this.nodes.gameplayErrorBanner.style.display = 'none';
         }

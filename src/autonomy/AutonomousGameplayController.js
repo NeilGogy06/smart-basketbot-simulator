@@ -232,6 +232,20 @@ export class AutonomousGameplayController {
     }
   }
 
+  /**
+   * Helper to set robot drive velocities compatibly across DifferentialDriveController and test mocks.
+   * @param {number} linearVelocity
+   * @param {number} angularVelocity
+   */
+  setRobotDriveVelocities(linearVelocity, angularVelocity) {
+    if (!this.robot || !this.robot.driveController) return;
+    if (typeof this.robot.driveController.setDriveVelocities === 'function') {
+      this.robot.driveController.setDriveVelocities(linearVelocity, angularVelocity);
+    } else if (typeof this.robot.driveController.setTargetVelocity === 'function') {
+      this.robot.driveController.setTargetVelocity(linearVelocity, angularVelocity);
+    }
+  }
+
   // =========================================================================
   // MAIN AUTONOMOUS UPDATE LOOP
   // =========================================================================
@@ -279,7 +293,7 @@ export class AutonomousGameplayController {
         }
 
         // Rotate in place to conduct 360-degree camera sweep
-        this.robot.driveController.setDriveVelocities(0.0, this.config.searchRotateSpeed);
+        this.setRobotDriveVelocities(0.0, this.config.searchRotateSpeed);
 
         if (timeInState >= this.config.searchBallTimeout) {
           this.robot.driveController.stop();
@@ -329,6 +343,7 @@ export class AutonomousGameplayController {
         // Proximity trigger: If robot arrives within ballCaptureDistance, transition to intake collection
         if (distToBall <= this.config.ballCaptureDistance || navState === 'GOAL_REACHED') {
           this.robot.navController.cancel();
+          this.retries.navigation = 0;
           this.robot.startIntake();
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.COLLECTING_BALL,
@@ -340,6 +355,22 @@ export class AutonomousGameplayController {
         // Navigation failure handling
         if (navState === 'BLOCKED') {
           this.triggerRecovery('NAV_BLOCKED', 'Path to target basketball is blocked by obstacle');
+          return;
+        }
+
+        // Timeout fallback for ball navigation
+        if (timeInState >= 15.0) {
+          if (distToBall <= 1.2) {
+            this.robot.navController.cancel();
+            this.robot.startIntake();
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.COLLECTING_BALL,
+              `Navigation timed out near ball (${distToBall.toFixed(2)}m). Switching to collection crawl`
+            );
+            return;
+          }
+          this.robot.navController.cancel();
+          this.triggerRecovery('NAV_BLOCKED', `Navigation to ball timed out after ${timeInState.toFixed(1)}s`);
           return;
         }
 
@@ -367,7 +398,15 @@ export class AutonomousGameplayController {
           this.robot.driveController.stop();
           this.robot.stopIntake();
           this.retries.collection = 0; // Reset collection retry counter
-          this.currentTarget = null;
+          // Keep current target or associate captured ball so HUD shows possessed ball
+          if (!this.currentTarget && this.robot.intake?.capturedBall) {
+            this.currentTarget = {
+              id: this.robot.intake.capturedBall.id,
+              distance: 0.0,
+              confidence: 1.0,
+              worldPosition: this.robot.getPosition()
+            };
+          }
 
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.SEARCHING_FOR_HOOP,
@@ -376,8 +415,19 @@ export class AutonomousGameplayController {
           return;
         }
 
-        // Crawl forward slowly to ingest the basketball
-        this.robot.driveController.setDriveVelocities(this.config.ballCollectionDriveSpeed, 0.0);
+        // Steer front intake scoop actively towards the target ball during collection crawl
+        const robotPos = this.robot.getPosition();
+        const robotHeading = this.robot.getHeading();
+        let yawCommand = 0.0;
+        if (this.currentTarget?.worldPosition) {
+          const dx = this.currentTarget.worldPosition.x - robotPos.x;
+          const dz = this.currentTarget.worldPosition.z - robotPos.z;
+          const angleToBall = Math.atan2(-dz, dx);
+          const headingErr = RobotKinematics.normalizeAngle(angleToBall - robotHeading);
+          yawCommand = Math.max(-1.5, Math.min(1.5, headingErr * 2.5));
+        }
+
+        this.setRobotDriveVelocities(this.config.ballCollectionDriveSpeed, yawCommand);
 
         if (timeInState >= this.config.collectionTimeout) {
           this.robot.driveController.stop();
@@ -395,6 +445,7 @@ export class AutonomousGameplayController {
 
         if (hoopObs && hoopObs.visible && hoopObs.confidence >= this.config.minHoopConfidence) {
           this.robot.driveController.stop();
+          this._navShootingStarted = false;
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION,
             `Hoop detected by camera (range: ${hoopObs.distance.toFixed(1)}m, conf: ${(hoopObs.confidence * 100).toFixed(0)}%). Navigating to key`
@@ -403,10 +454,11 @@ export class AutonomousGameplayController {
         }
 
         // Rotate in place toward East hoop direction (+X baseline)
-        this.robot.driveController.setDriveVelocities(0.0, this.config.searchRotateSpeed);
+        this.setRobotDriveVelocities(0.0, this.config.searchRotateSpeed);
 
         if (timeInState >= this.config.searchHoopTimeout) {
           this.robot.driveController.stop();
+          this._navShootingStarted = false;
           // Fall back to default free-throw line key coordinates
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION,
@@ -421,7 +473,8 @@ export class AutonomousGameplayController {
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION: {
         // Initialize navigation on first entry
-        if (!this.targetShootingPos || timeInState < 0.05) {
+        if (!this._navShootingStarted) {
+          this._navShootingStarted = true;
           const hoopObs = this.visionManager?.getHoopObservation();
           this.targetShootingPos = this.decisionEngine.calculateShootingPosition(hoopObs, this.robot);
           this.robot.startAutonomousNavigation(this.targetShootingPos.x, this.targetShootingPos.z);
@@ -429,11 +482,15 @@ export class AutonomousGameplayController {
 
         const navState = this.robot.navController?.state;
         const robotPos = this.robot.getPosition();
-        const distToKey = Math.hypot(this.targetShootingPos.x - robotPos.x, this.targetShootingPos.z - robotPos.z);
+        const distToKey = this.targetShootingPos
+          ? Math.hypot(this.targetShootingPos.x - robotPos.x, this.targetShootingPos.z - robotPos.z)
+          : 0;
 
         if (navState === 'GOAL_REACHED' || distToKey <= this.config.shootingPosTolerance) {
+          this._navShootingStarted = false;
           this.robot.navController.cancel();
           this.robot.driveController.stop();
+          this.retries.navigation = 0;
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
             `Arrived at shooting position (${this.targetShootingPos.x.toFixed(1)}, ${this.targetShootingPos.z.toFixed(1)}). Aligning with basket`
@@ -442,10 +499,11 @@ export class AutonomousGameplayController {
         }
 
         if (navState === 'BLOCKED') {
-          // If blocked but already within shooting range (3.5m to 6.5m from hoop), shoot from current location!
-          const hoopX = this.targetShootingPos.hoopTarget.x;
+          // If blocked but already within shooting range (3.5m to 7.0m from hoop), shoot from current location!
+          const hoopX = this.targetShootingPos?.hoopTarget?.x || 12.425;
           const distToHoop = Math.hypot(hoopX - robotPos.x, -robotPos.z);
           if (distToHoop >= 3.5 && distToHoop <= 7.0) {
+            this._navShootingStarted = false;
             this.robot.navController.cancel();
             this.robot.driveController.stop();
             this.stateMachine.transitionTo(
@@ -454,7 +512,25 @@ export class AutonomousGameplayController {
             );
             return;
           }
+          this._navShootingStarted = false;
           this.triggerRecovery('NAV_BLOCKED', 'Path to shooting key is obstructed');
+          return;
+        }
+
+        if (timeInState >= 15.0) {
+          this._navShootingStarted = false;
+          this.robot.navController.cancel();
+          this.robot.driveController.stop();
+          const hoopX = this.targetShootingPos?.hoopTarget?.x || 12.425;
+          const distToHoop = Math.hypot(hoopX - robotPos.x, -robotPos.z);
+          if (distToHoop >= 3.0 && distToHoop <= 7.5) {
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
+              `Navigation timed out but in shooting range (${distToHoop.toFixed(1)}m): proceeding to align`
+            );
+            return;
+          }
+          this.triggerRecovery('NAV_BLOCKED', `Navigation to shooting position timed out after ${timeInState.toFixed(1)}s`);
         }
         break;
       }
@@ -483,7 +559,11 @@ export class AutonomousGameplayController {
         // Apply heading hold PID
         this.robot.driveController.setTargetHeading(targetHeading, 0.0);
 
-        if (Math.abs(headingError) <= this.config.headingToleranceRad) {
+        const angSpeed = Math.abs(typeof this.robot.getAngularVelocity === 'function' ? this.robot.getAngularVelocity().y : 0);
+        const withinTol = Math.abs(headingError) <= this.config.headingToleranceRad;
+        const settled = angSpeed < 0.4 || timeInState > 0.4;
+
+        if ((withinTol && settled) || (timeInState > 2.0 && Math.abs(headingError) <= 0.08 && angSpeed < 0.3)) {
           this.robot.driveController.stop();
           this.retries.alignment = 0;
           this.stateMachine.transitionTo(
@@ -594,9 +674,6 @@ export class AutonomousGameplayController {
         if (fired) {
           this.statistics.totalAttempts++;
           this._shotOutcomeRecorded = false;
-          if (this.hoopDetector) {
-            this.hoopDetector.notifyShotFired(shotInfo);
-          }
           this._lastEvaluatedShotId = shotInfo.id;
 
           this.stateMachine.transitionTo(
@@ -730,7 +807,7 @@ export class AutonomousGameplayController {
         if (action === 'BACKUP_AND_REAPPROACH') {
           // Reverse for 0.8s to give clearance, then re-engage approach
           if (timeInState < 0.8) {
-            this.robot.driveController.setDriveVelocities(this.config.recoveryBackupSpeed, 0.0);
+            this.setRobotDriveVelocities(this.config.recoveryBackupSpeed, 0.0);
           } else {
             this.robot.driveController.stop();
             this.stateMachine.transitionTo(AUTONOMOUS_STATES.NAVIGATING_TO_BALL, 'Back-up clearance complete: re-approaching ball');
@@ -762,11 +839,26 @@ export class AutonomousGameplayController {
    */
   triggerRecovery(reason, details) {
     this.statistics.recoveryAttempts++;
-    this.retries.collection++;
-    this.retries.navigation++;
+
+    let categoryRetries = 0;
+    if (reason === 'COLLECTION_FAILED' || reason === 'INTAKE_TIMEOUT') {
+      this.retries.collection++;
+      categoryRetries = this.retries.collection;
+    } else if (reason === 'NAV_BLOCKED' || reason === 'PATH_PLANNING_FAILED') {
+      this.retries.navigation++;
+      categoryRetries = this.retries.navigation;
+    } else if (reason === 'ALIGNMENT_TIMEOUT') {
+      this.retries.alignment++;
+      categoryRetries = this.retries.alignment;
+    } else if (reason === 'SPINUP_TIMEOUT') {
+      this.retries.spinUp++;
+      categoryRetries = this.retries.spinUp;
+    } else {
+      categoryRetries = 1;
+    }
 
     const decision = this.decisionEngine.evaluateRecoveryAction(reason, {
-      retries: this.retries.collection,
+      retries: categoryRetries,
       totalRecoveries: this.statistics.recoveryAttempts
     });
 
@@ -835,7 +927,13 @@ export class AutonomousGameplayController {
     const sm = this.stateMachine.getTelemetry();
     const possession = this.decisionEngine.evaluatePossession(this.robot);
     const hoopObs = this.visionManager?.getHoopObservation();
-    const target = this.currentTarget;
+    const target = this.currentTarget || (this.robot?.intake?.capturedBall ? {
+      id: this.robot.intake.capturedBall.id,
+      distance: 0.0,
+      azimuthDeg: 0.0,
+      confidence: 1.0,
+      worldPosition: typeof this.robot.intake.capturedBall.getPosition === 'function' ? this.robot.intake.capturedBall.getPosition() : null
+    } : null);
 
     const remainingShots = this.mode === GAMEPLAY_MODES.FIXED_TARGET
       ? Math.max(0, this.targetShots - this.statistics.successfulShots)

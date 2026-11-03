@@ -13,16 +13,25 @@ export class Basketball {
    * @param {THREE.Scene} scene
    * @param {import('../simulation/PhysicsWorld.js').PhysicsWorld} physicsWorld
    */
-  constructor(scene, physicsWorld) {
+  constructor(scene, physicsWorld, options = {}) {
     this.scene = scene;
     this.physicsWorld = physicsWorld;
-    this.config = SIMULATION_CONFIG.ball;
+    this.config = { ...SIMULATION_CONFIG.ball, ...options };
 
     this.mesh = null;
     this.rigidBody = null;
     this.collider = null;
 
     this.initialPosition = { ...this.config.initialPosition };
+
+    // Explicit Basketball Lifecycle States:
+    // 'AVAILABLE', 'APPROACHED', 'COLLECTING', 'POSSESSED', 'IN_FLIGHT', 'SCORED', 'MISSED', 'RESTING'
+    this.state = 'AVAILABLE';
+    this.isPossessed = false;
+    this.isAvailable = true;
+    this.possessedBy = null;
+    this.shotCooldownTimer = 0.0;
+    this.id = options.id || 'basketball_0';
 
     this.buildVisuals();
     this.buildPhysics();
@@ -208,6 +217,54 @@ export class Basketball {
   }
 
   /**
+   * Updates basketball state lifecycle, decrements cooldown timers, and evaluates floor settling.
+   * @param {number} dt Delta time in seconds
+   */
+  update(dt = 0.016) {
+    if (this.shotCooldownTimer > 0) {
+      this.shotCooldownTimer = Math.max(0, this.shotCooldownTimer - dt);
+    }
+
+    // Evaluate physical settling for shot or moving balls
+    if (this.state === 'IN_FLIGHT' || this.state === 'SCORED' || this.state === 'MISSED' || this.state === 'RESTING') {
+      const pos = this.getPosition();
+      const speed = this.getSpeed();
+      const onFloor = pos.y <= (this.config.radius + 0.08);
+      const isSlow = speed < 0.6;
+
+      if (onFloor && isSlow && this.shotCooldownTimer <= 0) {
+        if (this.state !== 'AVAILABLE') {
+          this.state = 'AVAILABLE';
+          this.isAvailable = true;
+          this.isPossessed = false;
+          this.possessedBy = null;
+        }
+      }
+    }
+  }
+
+  /**
+   * Sets the basketball lifecycle state with consistency validation.
+   * @param {'AVAILABLE'|'APPROACHED'|'COLLECTING'|'POSSESSED'|'IN_FLIGHT'|'SCORED'|'MISSED'|'RESTING'} newState
+   */
+  setState(newState) {
+    this.state = newState;
+    if (newState === 'POSSESSED') {
+      this.isPossessed = true;
+      this.isAvailable = false;
+    } else if (newState === 'AVAILABLE') {
+      this.isPossessed = false;
+      this.isAvailable = true;
+      this.possessedBy = null;
+    } else {
+      this.isAvailable = false;
+      if (newState !== 'POSSESSED') {
+        this.isPossessed = false;
+      }
+    }
+  }
+
+  /**
    * Resets the basketball to initial coordinates with zero linear and angular momentum.
    */
   reset(pos = this.initialPosition, linvel = { x: 0, y: 0, z: 0 }) {
@@ -220,6 +277,12 @@ export class Basketball {
     this.rigidBody.setLinvel(linvel, true);
     this.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.rigidBody.wakeUp();
+
+    this.state = 'AVAILABLE';
+    this.isPossessed = false;
+    this.isAvailable = true;
+    this.possessedBy = null;
+    this.shotCooldownTimer = 0.0;
   }
 
   /**

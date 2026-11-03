@@ -44,8 +44,8 @@ export const AUTONOMOUS_CONFIG = Object.freeze({
   // Court positioning & shooting
   defaultShootingPos: { x: 8.2, z: 0.0 }, // Regulation Free-throw line key coordinates
   shootingPosTolerance: 0.35,     // Position tolerance for reaching shooting spot (meters)
-  headingToleranceRad: 0.035,     // Yaw heading tolerance relative to hoop (~2.0 degrees)
-  alignmentTimeout: 4.5,          // Seconds allowed for heading PID alignment
+  headingToleranceRad: 0.05,      // Yaw heading tolerance relative to hoop (~2.86 degrees)
+  alignmentTimeout: 5.0,          // Seconds allowed for heading PID alignment
   spinUpTimeout: 3.5,             // Seconds allowed for flywheels to reach target RPM
   shotCooldown: 0.4,              // Seconds cooldown immediately after launch
   shotEvaluationTimeout: 6.0,     // Max seconds waiting for ball descent/scoring resolution
@@ -59,7 +59,7 @@ export const AUTONOMOUS_CONFIG = Object.freeze({
   // Recovery & retry thresholds
   maxCollectionRetries: 3,        // Retries for failed ball collection before searching again
   maxNavigationRetries: 3,        // Retries for blocked path replanning
-  maxAlignmentRetries: 2,         // Retries for alignment timeout
+  maxAlignmentRetries: 3,         // Retries for alignment timeout
   maxSpinUpRetries: 2,            // Retries for flywheel readiness
   maxTotalRecoveries: 10,         // Safety ceiling for total session recoveries before FAILED
   recoveryBackupDistance: 0.60,   // Distance to back up during collection recovery (meters)

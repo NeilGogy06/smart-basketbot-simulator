@@ -51,6 +51,13 @@ export class AutonomousDecisionEngine {
       const wz = track.worldPosition.z;
       if (Math.abs(wx) > 14.5 || Math.abs(wz) > 7.5) continue;
 
+      // Gating filter 3: Must be available (not currently possessed, in flight, or in post-shot cooldown)
+      if (track.reference) {
+        if (track.reference.isPossessed) continue;
+        if (track.reference.state && track.reference.state !== 'AVAILABLE' && track.reference.state !== 'FIELD') continue;
+        if (track.reference.shotCooldownTimer && track.reference.shotCooldownTimer > 0) continue;
+      }
+
       // Distance scoring: closer targets score higher (normalized 0..1 over 20m)
       const dist = track.distance ?? Math.hypot(wx - robotPos.x, wz - robotPos.z);
       const distScore = Math.max(0.0, 1.0 - (dist / 18.0));
@@ -159,7 +166,7 @@ export class AutonomousDecisionEngine {
       return { hasBall: false, opticalActive: false, state: 'NO_INTAKE' };
     }
     const it = robot.intake;
-    const hasBall = Boolean(it.isBallCaptured || it.ballState === 'CAPTURED');
+    const hasBall = Boolean(it.isBallCaptured || it.ballState === 'CAPTURED' || it.capturedBall);
     const opticalActive = Boolean(it.opticalSensorActive);
 
     return {
@@ -301,6 +308,14 @@ export class AutonomousDecisionEngine {
           action: 'ABORT_SHOOTING',
           nextState: 'FAILED',
           reason: 'Flywheels failed to achieve target operational RPM'
+        };
+      }
+
+      case 'CONTROLLER_EXCEPTION': {
+        return {
+          action: 'HALT_ERROR',
+          nextState: 'FAILED',
+          reason: `Internal Exception: ${context.message || 'Subsystem fault occurred'}`
         };
       }
 

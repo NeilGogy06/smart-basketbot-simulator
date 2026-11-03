@@ -92,7 +92,19 @@ export class Simulation {
 
     // Entities
     this.robot = new Robot(this.scene, this.physicsWorld, () => this.isRunning);
-    this.basketball = new Basketball(this.scene, this.physicsWorld);
+    this.basketball = new Basketball(this.scene, this.physicsWorld, { id: 'ball_primary' });
+    this.basketballs = [this.basketball];
+
+    // Provision court with additional basketballs for autonomous multi-ball gameplay
+    const extraBall1 = new Basketball(this.scene, this.physicsWorld, {
+      id: 'ball_wing_left',
+      initialPosition: { x: 5.5, y: 0.12, z: -3.2 }
+    });
+    const extraBall2 = new Basketball(this.scene, this.physicsWorld, {
+      id: 'ball_wing_right',
+      initialPosition: { x: 6.2, y: 0.12, z: 2.8 }
+    });
+    this.basketballs.push(extraBall1, extraBall2);
 
     // Basketball scoring detection & autonomous shooter workflow
     this.hoopDetector = new HoopDetector();
@@ -241,12 +253,15 @@ export class Simulation {
     const ballPos = this.basketball ? this.basketball.getPosition() : null;
     const ballVel = this.basketball ? this.basketball.getVelocity() : { x: 0, y: 0, z: 0 };
     if (this.robot) {
-      this.robot.update(deltaTime, ballPos, this.basketball);
+      this.robot.update(deltaTime, ballPos, this.basketballs || this.basketball);
     }
 
-    // Update hoop scoring detector
-    if (this.hoopDetector && ballPos) {
-      this.hoopDetector.update(ballPos, ballVel, deltaTime);
+    // Update hoop scoring detector: track the active in-flight or primary ball
+    if (this.hoopDetector) {
+      const activeBall = this.hoopDetector.activeShot?.ball || this.basketballs?.find(b => b.state === 'IN_FLIGHT' || b.state === 'ENTERED_RIM') || this.basketball;
+      if (activeBall) {
+        this.hoopDetector.update(activeBall.getPosition(), activeBall.getVelocity(), deltaTime);
+      }
     }
 
     // Step complete autonomous basketball intelligence (Milestone 7)
@@ -273,7 +288,7 @@ export class Simulation {
     // Update robot vision perception system
     if (this.visionManager && this.robot) {
       try {
-        this.visionManager.update(deltaTime, this.robot, this.basketball, this.hoopEast);
+        this.visionManager.update(deltaTime, this.robot, this.basketballs || this.basketball, this.hoopEast);
       } catch (err) {
         console.error('[Simulation] Error in VisionManager update:', err);
       }
@@ -504,8 +519,14 @@ export class Simulation {
    * Resets basketball to default position with zero velocity.
    */
   resetBall() {
-    if (this.basketball) {
+    if (this.basketballs && this.basketballs.length > 0) {
+      this.basketballs.forEach(b => b.reset());
+    } else if (this.basketball) {
       this.basketball.reset();
+    }
+    if (this.robot && this.robot.intake) {
+      this.robot.intake.releaseBall();
+      this.robot.intake.reset();
     }
   }
 
@@ -553,8 +574,11 @@ export class Simulation {
    * Launches basketball into 3D ballistic trajectory towards target hoop.
    */
   fireShooter() {
-    if (this.robot && this.basketball) {
-      return this.robot.fireShot(this.basketball, this.hoopDetector);
+    if (this.robot) {
+      const ballToShoot = (this.robot.intake && this.robot.intake.capturedBall)
+        ? this.robot.intake.capturedBall
+        : this.basketball;
+      return this.robot.fireShot(ballToShoot, this.hoopDetector);
     }
     return false;
   }
