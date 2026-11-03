@@ -272,4 +272,12 @@ export class BasketballHoop {
       0.7
     );
   }
+
+  /**
+   * Returns world position coordinates of hoop rim center.
+   * @returns {{ x: number, y: number, z: number }}
+   */
+  getRimPosition() {
+    return { x: this.rimX, y: this.rimY, z: this.rimZ };
+  }
 }

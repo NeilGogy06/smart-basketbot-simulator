@@ -21,6 +21,7 @@ export class Dashboard {
     this.bindTeleopControls();
     this.bindNavigationControls();
     this.bindShooterAndIntakeControls();
+    this.bindVisionControls();
     this.subscribeTelemetry();
   }
 
@@ -177,6 +178,74 @@ export class Dashboard {
             <div id="recent-shots-list" class="font-mono" style="display: flex; flex-direction: column; gap: 3px;">
               <div style="font-size: 0.65rem; color: var(--text-muted); font-style: italic; padding: 2px 4px;">Awaiting shot attempts...</div>
             </div>
+          </div>
+        </div>
+
+        <!-- ROBOT VISION & CAMERA FEED -->
+        <div class="telemetry-card card-vision">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              <span>ROBOT CAMERA FEED</span>
+            </div>
+            <span class="badge badge-green" id="vision-status-badge">ACTIVE</span>
+          </div>
+
+          <!-- Live Robot Camera Viewport with 2D HUD Canvas Overlay -->
+          <div class="vision-viewport-wrap">
+            <canvas id="vision-feed-canvas" width="320" height="240" class="vision-canvas"></canvas>
+            <div class="vision-fov-indicator" id="vision-fov-tag">FOV 70°</div>
+          </div>
+
+          <!-- Vision Telemetry Metrics -->
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">Detected Balls</span>
+              <span class="grid-value font-mono text-amber" id="vision-ball-count">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Tracked Ball</span>
+              <span class="grid-value font-mono text-cyan" id="vision-primary-ball">NONE</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Ball Range</span>
+              <span class="grid-value font-mono" id="vision-ball-dist">-- m</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Ball Azimuth</span>
+              <span class="grid-value font-mono" id="vision-ball-bearing">--°</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Hoop Detected</span>
+              <span class="grid-value font-mono text-muted" id="vision-hoop-visible">NO</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Hoop Range</span>
+              <span class="grid-value font-mono" id="vision-hoop-dist">-- m</span>
+            </div>
+          </div>
+
+          <!-- Vision Settings & Controls -->
+          <div class="vision-controls-row">
+            <div class="vision-ctrl-group">
+              <span class="sub-label">FOV: <span id="lbl-vision-fov" class="text-cyan">70°</span></span>
+              <input type="range" id="slider-vision-fov" min="40" max="110" step="5" value="70" class="vision-slider">
+            </div>
+            <div class="vision-ctrl-group">
+              <span class="sub-label">RANGE: <span id="lbl-vision-range" class="text-amber">18m</span></span>
+              <input type="range" id="slider-vision-range" min="5" max="30" step="1" value="18" class="vision-slider">
+            </div>
+          </div>
+          <div class="nav-action-row" style="margin-top: 6px;">
+            <button class="btn btn-secondary btn-nav-action" id="btn-toggle-vision" style="flex: 1;">
+              <span id="lbl-toggle-vision">Disable Camera</span>
+            </button>
+            <button class="btn btn-subtle btn-nav-action" id="btn-vision-res" style="flex: 1;" title="Toggle resolution (320x240 / 480x360)">
+              <span id="lbl-vision-res">320x240</span>
+            </button>
           </div>
         </div>
 
@@ -565,6 +634,25 @@ export class Dashboard {
       statAccuracy: this.domElement.querySelector('#stat-accuracy'),
       recentShotsList: this.domElement.querySelector('#recent-shots-list'),
 
+      // Robot Vision & Camera nodes
+      visionStatusBadge: this.domElement.querySelector('#vision-status-badge'),
+      visionCanvas: this.domElement.querySelector('#vision-feed-canvas'),
+      visionFovTag: this.domElement.querySelector('#vision-fov-tag'),
+      visionBallCount: this.domElement.querySelector('#vision-ball-count'),
+      visionPrimaryBall: this.domElement.querySelector('#vision-primary-ball'),
+      visionBallDist: this.domElement.querySelector('#vision-ball-dist'),
+      visionBallBearing: this.domElement.querySelector('#vision-ball-bearing'),
+      visionHoopVisible: this.domElement.querySelector('#vision-hoop-visible'),
+      visionHoopDist: this.domElement.querySelector('#vision-hoop-dist'),
+      sliderVisionFov: this.domElement.querySelector('#slider-vision-fov'),
+      lblVisionFov: this.domElement.querySelector('#lbl-vision-fov'),
+      sliderVisionRange: this.domElement.querySelector('#slider-vision-range'),
+      lblVisionRange: this.domElement.querySelector('#lbl-vision-range'),
+      btnToggleVision: this.domElement.querySelector('#btn-toggle-vision'),
+      lblToggleVision: this.domElement.querySelector('#lbl-toggle-vision'),
+      btnVisionRes: this.domElement.querySelector('#btn-vision-res'),
+      lblVisionRes: this.domElement.querySelector('#lbl-vision-res'),
+
       // Intake and containment nodes
       intakeStatusBadge: this.domElement.querySelector('#intake-status-badge'),
       txtBallPossession: this.domElement.querySelector('#txt-ball-possession'),
@@ -823,6 +911,65 @@ export class Dashboard {
     if (btnFire) {
       btnFire.addEventListener('click', () => {
         this.simulation.fireShooter();
+      });
+    }
+  }
+
+  /**
+   * Binds camera FOV, max distance, enable toggle, and resolution controls.
+   */
+  bindVisionControls() {
+    const btnToggle = this.domElement.querySelector('#btn-toggle-vision');
+    const lblToggle = this.domElement.querySelector('#lbl-toggle-vision');
+    const sliderFov = this.domElement.querySelector('#slider-vision-fov');
+    const lblFov = this.domElement.querySelector('#lbl-vision-fov');
+    const sliderRange = this.domElement.querySelector('#slider-vision-range');
+    const lblRange = this.domElement.querySelector('#lbl-vision-range');
+    const btnRes = this.domElement.querySelector('#btn-vision-res');
+    const lblRes = this.domElement.querySelector('#lbl-vision-res');
+
+    if (btnToggle) {
+      btnToggle.addEventListener('click', () => {
+        if (!this.simulation.visionManager) return;
+        const next = !this.simulation.visionManager.isEnabled;
+        this.simulation.setVisionEnabled(next);
+        if (lblToggle) lblToggle.textContent = next ? 'Disable Camera' : 'Enable Camera';
+        if (this.nodes.visionStatusBadge) {
+          this.nodes.visionStatusBadge.textContent = next ? 'ACTIVE' : 'OFFLINE';
+          this.nodes.visionStatusBadge.className = next ? 'badge badge-green' : 'badge badge-slate';
+        }
+      });
+    }
+
+    if (sliderFov) {
+      sliderFov.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (lblFov) lblFov.textContent = `${val}°`;
+        if (this.nodes.visionFovTag) this.nodes.visionFovTag.textContent = `FOV ${val}°`;
+        this.simulation.setVisionFOV(val);
+      });
+    }
+
+    if (sliderRange) {
+      sliderRange.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        if (lblRange) lblRange.textContent = `${val}m`;
+        this.simulation.setVisionMaxDistance(val);
+      });
+    }
+
+    let isHighRes = false;
+    if (btnRes) {
+      btnRes.addEventListener('click', () => {
+        isHighRes = !isHighRes;
+        const w = isHighRes ? 480 : 320;
+        const h = isHighRes ? 360 : 240;
+        this.simulation.setVisionResolution(w, h);
+        if (this.nodes.visionCanvas) {
+          this.nodes.visionCanvas.width = w;
+          this.nodes.visionCanvas.height = h;
+        }
+        if (lblRes) lblRes.textContent = `${w}x${h}`;
       });
     }
   }
@@ -1139,6 +1286,137 @@ export class Dashboard {
     } else {
       this.nodes.ballBadge.textContent = 'RESTING';
       this.nodes.ballBadge.className = 'badge badge-slate';
+    }
+
+    // Robot Vision telemetry & HUD feed
+    if (data.vision) {
+      const v = data.vision;
+      const isVisionOn = v.enabled ?? true;
+      if (this.nodes.visionStatusBadge) {
+        this.nodes.visionStatusBadge.textContent = isVisionOn ? 'ACTIVE' : 'OFFLINE';
+        this.nodes.visionStatusBadge.className = isVisionOn ? 'badge badge-green' : 'badge badge-slate';
+      }
+
+      const ballCount = v.balls?.count ?? 0;
+      if (this.nodes.visionBallCount) this.nodes.visionBallCount.textContent = `${ballCount}`;
+
+      const primary = v.balls?.primary;
+      if (this.nodes.visionPrimaryBall) {
+        this.nodes.visionPrimaryBall.textContent = primary ? primary.id : 'NONE';
+      }
+      if (this.nodes.visionBallDist) {
+        this.nodes.visionBallDist.textContent = primary ? `${primary.distance.toFixed(2)} m` : '-- m';
+      }
+      if (this.nodes.visionBallBearing) {
+        this.nodes.visionBallBearing.textContent = primary ? `${primary.azimuthDeg.toFixed(1)}°` : '--°';
+      }
+
+      const hoop = v.hoop;
+      if (this.nodes.visionHoopVisible) {
+        this.nodes.visionHoopVisible.textContent = hoop?.visible ? 'YES' : 'NO';
+        this.nodes.visionHoopVisible.className = hoop?.visible ? 'grid-value font-mono text-success' : 'grid-value font-mono text-muted';
+      }
+      if (this.nodes.visionHoopDist) {
+        this.nodes.visionHoopDist.textContent = (hoop?.visible && hoop.distance != null) ? `${hoop.distance.toFixed(2)} m` : '-- m';
+      }
+
+      this.renderVisionFeed(v);
+    }
+  }
+
+  /**
+   * Renders the simulated robot camera stream and HUD bounding boxes onto the 2D dashboard canvas.
+   * @param {Object} vision Vision telemetry packet
+   */
+  renderVisionFeed(vision) {
+    if (!this.nodes.visionCanvas || !vision) return;
+    const canvas = this.nodes.visionCanvas;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (!vision.enabled) {
+      ctx.fillStyle = '#0a0e14';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#64748b';
+      ctx.font = '11px JetBrains Mono, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('CAMERA FEED OFFLINE', canvas.width / 2, canvas.height / 2);
+      return;
+    }
+
+    // Draw offscreen camera frame if rendered
+    let frameRendered = false;
+    if (this.simulation.visionManager) {
+      const imgData = this.simulation.visionManager.getFrameImageData();
+      if (imgData && imgData.width === canvas.width && imgData.height === canvas.height) {
+        ctx.putImageData(imgData, 0, 0);
+        frameRendered = true;
+      }
+    }
+
+    if (!frameRendered) {
+      // Fallback dark gradient backdrop if offscreen rendering is unavailable (or in headless test)
+      const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, '#0f172a');
+      grad.addColorStop(1, '#070b12');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Reticle crosshair at center
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2 - 14, canvas.height / 2);
+    ctx.lineTo(canvas.width / 2 + 14, canvas.height / 2);
+    ctx.moveTo(canvas.width / 2, canvas.height / 2 - 14);
+    ctx.lineTo(canvas.width / 2, canvas.height / 2 + 14);
+    ctx.stroke();
+
+    // 1. Draw Basketball Bounding Boxes
+    const trackedBalls = vision.balls?.tracked || [];
+    for (let i = 0; i < trackedBalls.length; i++) {
+      const b = trackedBalls[i];
+      if (b.status === 'LOST' || !b.screenBoundingBox) continue;
+      const box = b.screenBoundingBox;
+
+      ctx.strokeStyle = '#10b981'; // Vibrant green
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.85)';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'left';
+      const label = `${b.id} ${(b.distance ?? 0).toFixed(1)}m`;
+      const textWidth = ctx.measureText(label).width;
+      ctx.fillRect(box.x, Math.max(0, box.y - 12), textWidth + 4, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, box.x + 2, Math.max(9, box.y - 3));
+    }
+
+    // 2. Draw Hoop Detection Overlay
+    const hoop = vision.hoop;
+    if (hoop && hoop.visible && hoop.screenBoundingBox) {
+      const hb = hoop.screenBoundingBox;
+      ctx.strokeStyle = '#f97316'; // Vibrant orange
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(hb.x, hb.y, hb.width, hb.height);
+
+      if (hoop.screen) {
+        ctx.fillStyle = '#f97316';
+        ctx.beginPath();
+        ctx.arc(hoop.screen.x, hoop.screen.y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = 'rgba(249, 115, 22, 0.85)';
+      ctx.font = '9px JetBrains Mono, monospace';
+      ctx.textAlign = 'left';
+      const hoopLabel = `HOOP ${(hoop.distance ?? 0).toFixed(1)}m (${(hoop.confidence * 100).toFixed(0)}%)`;
+      const textW = ctx.measureText(hoopLabel).width;
+      ctx.fillRect(hb.x, Math.max(0, hb.y - 12), textW + 4, 12);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(hoopLabel, hb.x + 2, Math.max(9, hb.y - 3));
     }
   }
 

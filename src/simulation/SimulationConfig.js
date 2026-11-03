@@ -23,6 +23,19 @@ export const SIMULATION_CONFIG = {
     initialTarget: { x: 2.0, y: 1.0, z: 0.0 }
   },
 
+  // Simulated Robot Vision & Object Detection
+  vision: {
+    enabled: true,
+    fov: 70,
+    aspect: 4 / 3,
+    near: 0.1,
+    maxDistance: 18.0,
+    resolution: { width: 320, height: 240 },
+    lostTimeout: 1.5,
+    mountOffset: { x: 0.14, y: 0.35, z: 0.0 },
+    pitchDeg: -4.0
+  },
+
   // Physics simulation
   physics: {
     gravity: { x: 0.0, y: -9.81, z: 0.0 },

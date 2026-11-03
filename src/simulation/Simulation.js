@@ -17,6 +17,7 @@ import { Robot } from '../robot/Robot.js';
 import { PathVisualizer } from '../navigation/PathVisualizer.js';
 import { HoopDetector } from '../robot/HoopDetector.js';
 import { AutonomousShooterWorkflow } from '../navigation/AutonomousShooterWorkflow.js';
+import { VisionManager } from '../vision/VisionManager.js';
 
 export class Simulation {
   /**
@@ -51,6 +52,7 @@ export class Simulation {
     this.basketball = null;
     this.hoopDetector = null;
     this.shooterWorkflow = null;
+    this.visionManager = null;
 
     // Animation frame handle
     this.animationFrameId = null;
@@ -97,6 +99,10 @@ export class Simulation {
       basketball: this.basketball,
       hoopDetector: this.hoopDetector
     });
+
+    // Robot Vision & Camera perception system
+    this.visionManager = new VisionManager(SIMULATION_CONFIG.vision);
+    this.visionManager.initialize(this.scene, this.renderer);
 
     // Autonomous Navigation Path Visualizer
     this.pathVisualizer = new PathVisualizer(this.scene);
@@ -231,6 +237,11 @@ export class Simulation {
       this.shooterWorkflow.update(deltaTime);
     }
 
+    // Update robot vision perception system
+    if (this.visionManager && this.robot) {
+      this.visionManager.update(deltaTime, this.robot, this.basketball, this.hoopEast);
+    }
+
     // Update navigation path visualizer
     if (this.pathVisualizer && this.robot) {
       const nav = this.robot.navController;
@@ -324,7 +335,8 @@ export class Simulation {
         adaptiveCorrector: driveTel.adaptiveCorrector || {}
       },
       shooterWorkflow: this.shooterWorkflow ? this.shooterWorkflow.getTelemetry() : {},
-      shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {}
+      shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {},
+      vision: this.visionManager ? this.visionManager.getTelemetry() : {}
     };
 
     for (let i = 0; i < this.telemetryCallbacks.length; i++) {
@@ -382,6 +394,7 @@ export class Simulation {
     this.resetBall();
     if (this.hoopDetector) this.hoopDetector.reset();
     if (this.shooterWorkflow) this.shooterWorkflow.reset();
+    if (this.visionManager) this.visionManager.reset();
     if (this.pathVisualizer) this.pathVisualizer.clear();
     console.log('[Simulation] Simulation reset to initial state.');
   }
@@ -560,7 +573,51 @@ export class Simulation {
     }
     if (this.pathVisualizer) this.pathVisualizer.destroy();
     if (this.shooterWorkflow) this.shooterWorkflow.reset();
+    if (this.visionManager) this.visionManager.destroy();
     if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
+  }
+
+  // ================= VISION CONTROLS =================
+
+  /**
+   * Toggles robot camera perception on or off.
+   * @param {boolean} enabled
+   */
+  setVisionEnabled(enabled) {
+    if (this.visionManager) {
+      this.visionManager.setEnabled(enabled);
+    }
+  }
+
+  /**
+   * Sets robot camera vertical FOV in degrees.
+   * @param {number} fovDeg
+   */
+  setVisionFOV(fovDeg) {
+    if (this.visionManager) {
+      this.visionManager.setFOV(fovDeg);
+    }
+  }
+
+  /**
+   * Sets robot camera maximum detection distance in meters.
+   * @param {number} maxDist
+   */
+  setVisionMaxDistance(maxDist) {
+    if (this.visionManager) {
+      this.visionManager.setMaxDistance(maxDist);
+    }
+  }
+
+  /**
+   * Sets robot camera offscreen resolution.
+   * @param {number} width
+   * @param {number} height
+   */
+  setVisionResolution(width, height) {
+    if (this.visionManager) {
+      this.visionManager.setResolution(width, height);
+    }
   }
 }
