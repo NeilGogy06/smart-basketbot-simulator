@@ -369,6 +369,17 @@ export class CameraSystem {
   }
 
   /**
+   * Returns latest rendered camera frame ImageData or null if unavailable.
+   * @returns {ImageData|null}
+   */
+  getFrameImageData() {
+    if (!this.isActive || !this.imageData) {
+      return null;
+    }
+    return this.imageData;
+  }
+
+  /**
    * Camera telemetry summary.
    */
   getTelemetry() {

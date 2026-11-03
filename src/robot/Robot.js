@@ -707,6 +707,14 @@ export class Robot {
   }
 
   /**
+   * Alias for adaptiveCorrector for integration compatibility.
+   * @returns {AdaptiveShotCorrector}
+   */
+  get adaptiveShotCorrector() {
+    return this.adaptiveCorrector;
+  }
+
+  /**
    * Starts dedicated closed-loop trajectory optimization, alignment, spinup, and firing.
    * @param {{ x: number, y: number, z: number }} [hoopTarget]
    */

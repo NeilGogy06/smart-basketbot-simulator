@@ -39,7 +39,11 @@ export class ShootingMechanism {
     this.flywheelAngle = 0.0;
 
     // Local barrel muzzle exit point relative to robot origin
-    this.muzzleLocalPos = { x: 0.20, y: 0.45, z: 0.0 };
+    // Configured to sit at barrel exit, strictly clear of the robot chassis collider
+    // (X >= 0.38m chassis front + 0.12m ball radius + 0.04m safety margin = 0.54m),
+    // clearing intake rollers and preventing collision impulses on spawn.
+    const configMuzzle = SIMULATION_CONFIG.robot?.shooter?.muzzleLocalPos;
+    this.muzzleLocalPos = options.muzzleLocalPos ?? (configMuzzle ? { ...configMuzzle } : { x: 0.54, y: 0.45, z: 0.0 });
 
     // Default East target hoop coordinates
     const courtLen = SIMULATION_CONFIG.court.length;
@@ -91,10 +95,14 @@ export class ShootingMechanism {
     const cosH = Math.cos(heading);
     const sinH = Math.sin(heading);
 
+    const mx = this.muzzleLocalPos.x;
+    const my = this.muzzleLocalPos.y;
+    const mz = this.muzzleLocalPos.z || 0.0;
+
     const muzzleWorld = {
-      x: robotPos.x + cosH * this.muzzleLocalPos.x,
-      y: robotPos.y + this.muzzleLocalPos.y,
-      z: robotPos.z - sinH * this.muzzleLocalPos.x
+      x: robotPos.x + cosH * mx - sinH * mz,
+      y: robotPos.y + my,
+      z: robotPos.z - sinH * mx - cosH * mz
     };
 
     const solution = this.calculator.calculateSolution(muzzleWorld, hoopTarget, this.launchAngleDeg);
@@ -156,10 +164,14 @@ export class ShootingMechanism {
     const sinH = Math.sin(heading);
 
     // Muzzle position in world frame
+    const mx = this.muzzleLocalPos.x;
+    const my = this.muzzleLocalPos.y;
+    const mz = this.muzzleLocalPos.z || 0.0;
+
     const muzzleWorld = {
-      x: robotPos.x + cosH * this.muzzleLocalPos.x,
-      y: robotPos.y + this.muzzleLocalPos.y,
-      z: robotPos.z - sinH * this.muzzleLocalPos.x
+      x: robotPos.x + cosH * mx - sinH * mz,
+      y: robotPos.y + my,
+      z: robotPos.z - sinH * mx - cosH * mz
     };
 
     // Calculate exact ballistic launch velocity vector
@@ -179,6 +191,14 @@ export class ShootingMechanism {
       };
     }
 
+    // Galilean velocity addition: ball inherits the robot's current linear velocity
+    const robotVel = typeof robot.getVelocity === 'function' ? robot.getVelocity() : { x: 0, y: 0, z: 0 };
+    const totalLaunchVel = {
+      x: launchVel.x + (robotVel.x || 0),
+      y: launchVel.y + (robotVel.y || 0),
+      z: launchVel.z + (robotVel.z || 0)
+    };
+
     // 1. Release ball from robot containment and restore solid physics & gravity
     if (robot.intake) {
       robot.intake.releaseBall(basketball);
@@ -188,7 +208,7 @@ export class ShootingMechanism {
     // 2. Position ball at muzzle exit and apply launch velocity into Rapier physics
     if (basketball.rigidBody) {
       basketball.rigidBody.setTranslation(muzzleWorld, true);
-      basketball.rigidBody.setLinvel(launchVel, true);
+      basketball.rigidBody.setLinvel(totalLaunchVel, true);
 
       // Backspin around lateral horizontal axis perpendicular to shot direction
       const backspinSpeed = 18.0; // rad/s (~170 RPM)

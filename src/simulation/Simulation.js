@@ -251,35 +251,60 @@ export class Simulation {
 
     // Step complete autonomous basketball intelligence (Milestone 7)
     if (this.gameplayController && this.gameplayController.isActive) {
-      this.gameplayController.update(deltaTime);
+      try {
+        this.gameplayController.update(deltaTime);
+      } catch (err) {
+        console.error('[Simulation] Error in AutonomousGameplayController update:', err);
+        if (typeof this.gameplayController.triggerRecovery === 'function') {
+          this.gameplayController.triggerRecovery('CONTROLLER_EXCEPTION', err.message);
+        } else {
+          this.gameplayController.isActive = false;
+        }
+      }
     } else if (this.shooterWorkflow) {
       // Step standalone acquisition and shooting workflow when gameplay controller is not active
-      this.shooterWorkflow.update(deltaTime);
+      try {
+        this.shooterWorkflow.update(deltaTime);
+      } catch (err) {
+        console.error('[Simulation] Error in ShooterWorkflow update:', err);
+      }
     }
 
     // Update robot vision perception system
     if (this.visionManager && this.robot) {
-      this.visionManager.update(deltaTime, this.robot, this.basketball, this.hoopEast);
+      try {
+        this.visionManager.update(deltaTime, this.robot, this.basketball, this.hoopEast);
+      } catch (err) {
+        console.error('[Simulation] Error in VisionManager update:', err);
+      }
     }
 
     // Update navigation path visualizer
     if (this.pathVisualizer && this.robot) {
-      const nav = this.robot.navController;
-      if (nav && (nav.state === 'NAVIGATING' || nav.state === 'APPROACHING_GOAL')) {
-        this.pathVisualizer.updatePath(nav.waypoints, this.robot.getPosition());
-      } else if (nav && (nav.state === 'GOAL_REACHED' || nav.state === 'IDLE' || nav.state === 'CANCELLED' || nav.state === 'BLOCKED')) {
-        this.pathVisualizer.clear();
+      try {
+        const nav = this.robot.navController;
+        if (nav && (nav.state === 'NAVIGATING' || nav.state === 'APPROACHING_GOAL')) {
+          this.pathVisualizer.updatePath(nav.waypoints, this.robot.getPosition());
+        } else if (nav && (nav.state === 'GOAL_REACHED' || nav.state === 'IDLE' || nav.state === 'CANCELLED' || nav.state === 'BLOCKED')) {
+          this.pathVisualizer.clear();
+        }
+      } catch (err) {
+        console.warn('[Simulation] Error updating PathVisualizer:', err);
       }
     }
 
     // Step simulation analytics and performance monitoring (Milestone 8)
     if (this.analyticsManager && this.robot) {
-      this.analyticsManager.update(
-        deltaTime,
-        this.robot,
-        this.robot.navController,
-        this.gameplayController
-      );
+      try {
+        this.analyticsManager.update(
+          deltaTime,
+          this.robot,
+          this.robot.navController,
+          this.gameplayController
+        );
+      } catch (err) {
+        console.warn('[Simulation] Error in AnalyticsManager update:', err);
+      }
     }
 
     // Update smooth camera controls
@@ -306,7 +331,9 @@ export class Simulation {
     const ballPos = this.basketball ? this.basketball.getPosition() : { x: 0, y: 0, z: 0 };
     const ballVel = this.basketball ? this.basketball.getVelocity() : { x: 0, y: 0, z: 0 };
     const ballSpeed = this.basketball ? this.basketball.getSpeed() : 0;
-    const isBallAirborne = this.basketball ? this.basketball.isAirborne() : false;
+    const isBallAirborne = this.basketball
+      ? (typeof this.basketball.isAirborne === 'function' ? this.basketball.isAirborne() : false)
+      : false;
 
     const robotPos = this.robot ? this.robot.getPosition() : { x: 0, y: 0, z: 0 };
     const robotHeading = this.robot ? this.robot.getHeading() : 0;
@@ -372,7 +399,14 @@ export class Simulation {
     };
 
     for (let i = 0; i < this.telemetryCallbacks.length; i++) {
-      this.telemetryCallbacks[i](telemetry);
+      try {
+        this.telemetryCallbacks[i](telemetry);
+      } catch (err) {
+        if (!this._lastTelemetryErrTime || (performance.now() - this._lastTelemetryErrTime) > 2000) {
+          console.warn('[Simulation] Telemetry listener callback encountered an error (throttled):', err);
+          this._lastTelemetryErrTime = performance.now();
+        }
+      }
     }
   }
 

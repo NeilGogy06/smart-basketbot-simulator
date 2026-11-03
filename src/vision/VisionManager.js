@@ -222,6 +222,19 @@ export class VisionManager {
   }
 
   /**
+   * Returns latest rendered camera frame ImageData or null if unavailable/offline.
+   * @returns {ImageData|null}
+   */
+  getFrameImageData() {
+    if (!this.isEnabled || !this.cameraSystem) {
+      return null;
+    }
+    return typeof this.cameraSystem.getFrameImageData === 'function'
+      ? this.cameraSystem.getFrameImageData()
+      : (this.cameraSystem.imageData || null);
+  }
+
+  /**
    * Resets all tracking and perception memory.
    */
   reset() {

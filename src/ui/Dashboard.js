@@ -87,7 +87,7 @@ export class Dashboard {
             <div class="card-title-wrap">
               <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"></circle>
-                <polygon points="12 6 12 12 16 14"></polygon>
+                <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
               <span>AUTONOMOUS INTELLIGENCE</span>
             </div>
@@ -105,7 +105,7 @@ export class Dashboard {
           <!-- Gameplay Mode Launch Controls -->
           <div class="nav-action-row" style="margin-bottom: 6px;">
             <button class="btn btn-primary btn-nav-action" id="btn-gameplay-continuous" title="Start continuous autonomous basketball search, intake, positioning and shooting">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 8 5 v 14 l 11 -7 z"/></svg>
               <span>Continuous</span>
             </button>
             <div class="target-input-wrap">
@@ -255,7 +255,7 @@ export class Dashboard {
         <div class="telemetry-card card-auto-shooter">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="currentColor"><path d="M 12 2 C 6.48 2 2 6.48 2 12 s 4.48 10 10 10 s 10 -4.48 10 -10 S 17.52 2 12 2 z m 1 17.93 c -3.95 -0.49 -7 -3.85 -7 -7.93 c 0 -0.62 0.08 -1.21 0.21 -1.79 L 9 15 v 1 c 0 1.1 0.9 2 2 2 v 1.93 z m 6.9 -2.54 c -0.26 -0.81 -1 -1.39 -1.9 -1.39 h -1 v -3 c 0 -0.55 -0.45 -1 -1 -1 H 8 v -2 h 2 c 0.55 0 1 -0.45 1 -1 V 7 h 2 c 1.1 0 2 -0.9 2 -2 v -0.41 c 2.93 1.19 5 4.06 5 7.41 c 0 2.08 -0.8 3.97 -2.1 5.39 z"/></svg>
               <span>AUTONOMOUS SHOOTER</span>
             </div>
             <span class="badge badge-slate" id="workflow-stage-badge">IDLE</span>
@@ -265,14 +265,14 @@ export class Dashboard {
           </div>
           <div class="nav-action-row" style="margin-bottom: 8px;">
             <button class="btn btn-accent btn-nav-action" id="btn-workflow-start" title="Run full autonomous acquire, navigate, align, spin up and shoot sequence">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 8 5 v 14 l 11 -7 z"/></svg>
               <span>Acquire & Shoot</span>
             </button>
             <button class="btn btn-secondary btn-nav-action" id="btn-closedloop-shoot" title="Align, calculate trajectory, spin up and shoot from current location (requires ball captured)">
               <span>Aim & Shoot</span>
             </button>
             <button class="btn btn-danger btn-nav-action" id="btn-workflow-cancel" title="Abort sequence">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 19 6.41 L 17.59 5 L 12 10.59 L 6.41 5 L 5 6.41 L 10.59 12 L 5 17.59 L 6.41 19 L 12 13.41 L 17.59 19 L 19 17.59 L 13.41 12 z"/></svg>
               <span>Abort</span>
             </button>
           </div>
@@ -366,7 +366,7 @@ export class Dashboard {
           <div class="card-header">
             <div class="card-title-wrap">
               <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <path d="M 23 19 a 2 2 0 0 1 -2 2 H 3 a 2 2 0 0 1 -2 -2 V 8 a 2 2 0 0 1 2 -2 h 4 l 2 -3 h 6 l 2 3 h 4 a 2 2 0 0 1 2 2 z"></path>
                 <circle cx="12" cy="13" r="4"></circle>
               </svg>
               <span>ROBOT CAMERA FEED</span>
@@ -480,11 +480,11 @@ export class Dashboard {
             <!-- Action Buttons -->
             <div class="nav-action-row">
               <button class="btn btn-primary btn-nav-action" id="btn-nav-start">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 8 5 v 14 l 11 -7 z"/></svg>
                 <span>Start Navigation</span>
               </button>
               <button class="btn btn-danger btn-nav-action" id="btn-nav-cancel">
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 19 6.41 L 17.59 5 L 12 10.59 L 6.41 5 L 5 6.41 L 10.59 12 L 5 17.59 L 6.41 19 L 12 13.41 L 17.59 19 L 19 17.59 L 13.41 12 z"/></svg>
                 <span>Cancel</span>
               </button>
             </div>
@@ -520,7 +520,7 @@ export class Dashboard {
         <div class="telemetry-card card-intake">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6m-6 4h6m-6-8h16M4 6h16M14 14l3-3 3 3M17 11v8"/></svg>
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M 4 14 h 6 m -6 4 h 6 m -6 -8 h 16 M 4 6 h 16 M 14 14 l 3 -3 3 3 M 17 11 v 8"/></svg>
               <span>INTAKE & CONTAINMENT</span>
             </div>
             <span class="badge badge-slate" id="intake-status-badge">IDLE</span>
@@ -545,7 +545,7 @@ export class Dashboard {
           </div>
           <div class="nav-action-row" style="margin-top: 8px;">
             <button class="btn btn-primary btn-nav-action" id="btn-intake-toggle" title="Toggle front intake rollers (I)">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-8-8z"/></svg>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 12 4 V 1 L 8 5 l 4 4 V 6 c 3.31 0 6 2.69 6 6 s -2.69 6 -6 6 c -2.69 0 -6 -2.69 -6 -6 H 4 c 0 4.42 3.58 8 8 8 s 8 -3.58 8 -8 s -3.58 -8 -8 -8 z"/></svg>
               <span id="lbl-intake-btn">Start Intake</span>
             </button>
             <button class="btn btn-subtle btn-nav-action" id="btn-intake-reject" title="Reject / eject ball forward">
@@ -558,7 +558,7 @@ export class Dashboard {
         <div class="telemetry-card card-shooter">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v6m0 6v6M3 12h6m6 0h6"></path></svg>
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M 12 3 v 6 m 0 6 v 6 M 3 12 h 6 m 6 0 h 6"></path></svg>
               <span>FLYWHEEL SHOOTER</span>
             </div>
             <span class="badge badge-slate" id="shooter-status-badge">IDLE</span>
@@ -591,7 +591,7 @@ export class Dashboard {
               <span>Spin Up</span>
             </button>
             <button class="btn btn-primary btn-nav-action" id="btn-shooter-fire" title="Launch basketball into Rapier physics (F)">
-              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 2.01 21 L 23 12 L 2.01 3 L 2 10 l 15 2 l -15 2 z"/></svg>
               <span>Fire Shot</span>
             </button>
           </div>
@@ -602,7 +602,7 @@ export class Dashboard {
         <div class="telemetry-card">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3V4a2 2 0 0 1 2-2m-3 8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
+              <svg class="card-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 12 2 a 2 2 0 0 1 2 2 v 1 h 3 a 2 2 0 0 1 2 2 v 10 a 2 2 0 0 1 -2 2 H 7 a 2 2 0 0 1 -2 -2 V 7 a 2 2 0 0 1 2 -2 h 3 V 4 a 2 2 0 0 1 2 -2 m -3 8 a 1.5 1.5 0 1 0 0 3 a 1.5 1.5 0 0 0 0 -3 m 6 0 a 1.5 1.5 0 1 0 0 3 a 1.5 1.5 0 0 0 0 -3 z"/></svg>
               <span>ROBOT POSE & DYNAMICS</span>
             </div>
             <span class="badge badge-cyan" id="bot-movement-badge">STOPPED</span>
@@ -640,7 +640,7 @@ export class Dashboard {
         <div class="telemetry-card">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18M3 12h18"></path></svg>
+              <svg class="card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M 12 3 v 18 M 3 12 h 18"></path></svg>
               <span>DIFFERENTIAL DRIVE WHEELS</span>
             </div>
             <span class="badge badge-slate" id="drive-mode-badge">MANUAL</span>
@@ -700,7 +700,7 @@ export class Dashboard {
         <div class="telemetry-card">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M 5 12 h 14 M 12 5 l 7 7 -7 7"/></svg>
               <span>ROBOT TELEOPERATION</span>
             </div>
             <span class="badge badge-amber">WASD PAD</span>
@@ -725,7 +725,7 @@ export class Dashboard {
         <div class="telemetry-card">
           <div class="card-header">
             <div class="card-title-wrap">
-              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3a15 15 0 0 1 0 18M3 12h18"></path></svg>
+              <svg class="card-icon text-amber" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M 12 3 a 15 15 0 0 1 0 18 M 12 3 a 15 15 0 0 0 0 18 M 3 12 h 18 M 12 3 v 18"></path></svg>
               <span>BASKETBALL STATE</span>
             </div>
             <span class="badge badge-amber" id="ball-flight-badge">RESTING</span>
@@ -2002,11 +2002,15 @@ export class Dashboard {
 
     // Draw offscreen camera frame if rendered
     let frameRendered = false;
-    if (this.simulation.visionManager) {
-      const imgData = this.simulation.visionManager.getFrameImageData();
-      if (imgData && imgData.width === canvas.width && imgData.height === canvas.height) {
-        ctx.putImageData(imgData, 0, 0);
-        frameRendered = true;
+    if (this.simulation.visionManager && typeof this.simulation.visionManager.getFrameImageData === 'function') {
+      try {
+        const imgData = this.simulation.visionManager.getFrameImageData();
+        if (imgData && imgData.width === canvas.width && imgData.height === canvas.height) {
+          ctx.putImageData(imgData, 0, 0);
+          frameRendered = true;
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Failed to render camera frame image data:', err);
       }
     }
 

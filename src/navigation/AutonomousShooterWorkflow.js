@@ -217,13 +217,16 @@ export class AutonomousShooterWorkflow {
           this.robot.driveController.stop();
 
           // Calculate and optimize ballistic launch parameters
-          const muzzleLocal = this.robot.shooter?.muzzleLocalPos ?? { x: 0.20, y: 0.45, z: 0.0 };
+          const muzzleLocal = this.robot.shooter?.muzzleLocalPos ?? { x: 0.54, y: 0.45, z: 0.0 };
           const cosH = Math.cos(heading);
           const sinH = Math.sin(heading);
+          const mx = muzzleLocal.x;
+          const my = muzzleLocal.y;
+          const mz = muzzleLocal.z || 0.0;
           const muzzleWorld = {
-            x: robotPos.x + cosH * muzzleLocal.x,
-            y: robotPos.y + muzzleLocal.y,
-            z: robotPos.z - sinH * muzzleLocal.x
+            x: robotPos.x + cosH * mx - sinH * mz,
+            y: robotPos.y + my,
+            z: robotPos.z - sinH * mx - cosH * mz
           };
 
           const opt = this.calculator.optimizeTrajectory(muzzleWorld, this.hoopTarget);

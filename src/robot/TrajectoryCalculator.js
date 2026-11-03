@@ -15,23 +15,72 @@ export class TrajectoryCalculator {
    * @param {number} [options.defaultAngleDeg=52.0] Default launch elevation angle in degrees
    * @param {number} [options.rimRadius=0.225] Regulation rim radius in meters (0.45m diameter)
    * @param {number} [options.ballRadius=0.12] Regulation basketball radius in meters (0.24m diameter)
+   * @param {number} [options.linearDamping=0.08] Rapier physics linear damping coefficient (s^-1)
    */
   constructor(options = {}) {
     this.gravity = options.gravity ?? 9.81;
     this.defaultAngleDeg = options.defaultAngleDeg ?? 52.0;
     this.rimRadius = options.rimRadius ?? SIMULATION_CONFIG.hoop.rimRadius;
     this.ballRadius = options.ballRadius ?? SIMULATION_CONFIG.ball.radius;
+    this.linearDamping = options.linearDamping ?? SIMULATION_CONFIG.ball?.linearDamping ?? 0.08;
     this.rimDiameter = this.rimRadius * 2; // 0.45m
     this.ballDiameter = this.ballRadius * 2; // 0.24m
   }
 
   /**
-   * Calculates ballistic launch velocity vector to reach target from launch position.
+   * Numerically solves flight time t under Rapier linear damping gamma and gravity g:
+   *   dv/dt = g - gamma * v
+   * Integrating horizontally:
+   *   d = (v_r0 / gamma) * (1 - exp(-gamma * t))
+   * Integrating vertically with v_y0 = v_r0 * tan(theta):
+   *   dy = d * tan(theta) - (g / gamma^2) * (gamma * t - 1 + exp(-gamma * t))
    *
-   * Projectile motion equations:
-   *   d = sqrt(dx^2 + dz^2)
-   *   h = targetY - launchY
-   *   v0 = sqrt( (g * d^2) / (2 * cos^2(theta) * (d * tan(theta) - h)) )
+   * Let K = d * tan(theta) - dy.
+   * If gamma <= 1e-7: t = sqrt(2 * K / g)
+   * If gamma > 1e-7: solves (g / gamma^2) * (tau - 1 + exp(-tau)) = K, where tau = gamma * t.
+   *
+   * @param {number} d Horizontal distance to target
+   * @param {number} dy Vertical elevation difference to target (targetY - launchY)
+   * @param {number} theta Launch elevation angle in radians
+   * @param {number} gamma Linear damping coefficient
+   * @param {number} g Gravitational acceleration magnitude
+   * @returns {number|null} Solved flight time in seconds, or null if unreachable
+   */
+  solveFlightTime(d, dy, theta, gamma, g) {
+    const tanTheta = Math.tan(theta);
+    const K = d * tanTheta - dy;
+    if (K <= 0) return null;
+
+    if (gamma <= 1e-7) {
+      return Math.sqrt((2 * K) / g);
+    }
+
+    // Vacuum flight time as initial estimate
+    const t0 = Math.sqrt((2 * K) / g);
+    const target = (gamma * gamma * K) / g;
+
+    // Newton-Raphson iteration on tau = gamma * t
+    let tau = gamma * t0;
+    for (let iter = 0; iter < 12; iter++) {
+      const expNegTau = Math.exp(-tau);
+      const f = tau - 1 + expNegTau - target;
+      const fPrime = 1 - expNegTau;
+      if (Math.abs(fPrime) < 1e-12) break;
+      const delta = f / fPrime;
+      tau -= delta;
+      if (Math.abs(delta) < 1e-12) break;
+    }
+
+    if (tau <= 0 || isNaN(tau)) {
+      return null;
+    }
+
+    return tau / gamma;
+  }
+
+  /**
+   * Calculates ballistic launch velocity vector to reach target from launch position,
+   * incorporating Rapier 3D linear damping (drag) and gravity.
    *
    * @param {{ x: number, y: number, z: number }} launchPos Initial ball position at launcher exit
    * @param {{ x: number, y: number, z: number }} targetPos Hoop center target position
@@ -86,10 +135,12 @@ export class TrajectoryCalculator {
     const sinTheta = Math.sin(theta);
     const tanTheta = Math.tan(theta);
 
-    // Denominator check: d * tan(theta) - dy must be positive
-    const denom = 2 * cosTheta * cosTheta * (d * tanTheta - dy);
+    const gamma = this.linearDamping;
+    const g = this.gravity;
 
-    if (denom <= 0) {
+    // Denominator check: d * tan(theta) - dy must be positive
+    const K = d * tanTheta - dy;
+    if (K <= 0) {
       return {
         valid: false,
         speed: 0,
@@ -109,34 +160,79 @@ export class TrajectoryCalculator {
       };
     }
 
-    const v0Sq = (this.gravity * d * d) / denom;
-    const v0 = Math.sqrt(v0Sq);
+    const flightTime = this.solveFlightTime(d, dy, theta, gamma, g);
+    if (!flightTime || flightTime <= 0) {
+      return {
+        valid: false,
+        speed: 0,
+        launchVelocity: { x: 0, y: 0, z: 0 },
+        flightTime: 0,
+        apexHeight: launchPos.y,
+        horizontalDistance: d,
+        requiredHeadingRad: Math.atan2(-dz, dx),
+        entryVelocity: { x: 0, y: 0, z: 0 },
+        entryAngleDeg: 0,
+        isDescending: false,
+        effectiveRimDiameter: 0,
+        rimClearanceMargin: -this.ballDiameter,
+        isPhysicallySuitable: false,
+        launchAngleDeg,
+        message: `Failed to converge on damped ballistic flight time for elevation angle ${launchAngleDeg.toFixed(1)}°`
+      };
+    }
 
-    // Flight time until reaching target plane
-    const flightTime = d / (v0 * cosTheta);
-
-    // Peak trajectory height
-    const vy0 = v0 * sinTheta;
-    const apexHeight = launchPos.y + (vy0 * vy0) / (2 * this.gravity);
+    // Required initial horizontal and vertical speeds
+    let vr0, vy0, v0;
+    if (gamma <= 1e-7) {
+      vr0 = d / flightTime;
+      vy0 = vr0 * tanTheta;
+      v0 = Math.hypot(vr0, vy0);
+    } else {
+      const expTerm = Math.exp(-gamma * flightTime);
+      vr0 = (gamma * d) / (1 - expTerm);
+      vy0 = vr0 * tanTheta;
+      v0 = Math.hypot(vr0, vy0);
+    }
 
     // Unit horizontal direction
     const ux = dx / d;
     const uz = dz / d;
 
-    const vx = v0 * cosTheta * ux;
+    const vx = vr0 * ux;
     const vy = vy0;
-    const vz = v0 * cosTheta * uz;
+    const vz = vr0 * uz;
 
     // Required robot yaw heading in simulator coordinate frame: (cos(heading), 0, -sin(heading))
     const requiredHeadingRad = Math.atan2(-dz, dx);
 
-    // Ball velocity at arrival at target hoop plane
-    const vyArrival = vy0 - this.gravity * flightTime;
+    // Ball velocity at target hoop plane arrival (t = flightTime)
+    let vrArrival, vyArrival;
+    if (gamma <= 1e-7) {
+      vrArrival = vr0;
+      vyArrival = vy0 - g * flightTime;
+    } else {
+      const expTerm = Math.exp(-gamma * flightTime);
+      vrArrival = vr0 * expTerm;
+      vyArrival = (vy0 + g / gamma) * expTerm - (g / gamma);
+    }
+
+    const vxArrival = vrArrival * ux;
+    const vzArrival = vrArrival * uz;
     const isDescending = vyArrival < 0;
 
+    // Peak trajectory apex height
+    let apexHeight;
+    if (vy0 <= 0) {
+      apexHeight = launchPos.y;
+    } else if (gamma <= 1e-7) {
+      apexHeight = launchPos.y + (vy0 * vy0) / (2 * g);
+    } else {
+      // Apex occurs when vy(t) = 0 => exp(-gamma * t_apex) = g / (g + gamma * vy0)
+      apexHeight = launchPos.y + vy0 / gamma - (g / (gamma * gamma)) * Math.log(1 + (gamma * vy0) / g);
+    }
+
     // Entry angle below horizontal: theta_entry = atan2(-vy_arrival, v_horizontal)
-    const vHoriz = v0 * cosTheta;
-    const entryAngleRad = isDescending ? Math.atan2(-vyArrival, vHoriz) : 0;
+    const entryAngleRad = isDescending ? Math.atan2(-vyArrival, vrArrival) : 0;
     const entryAngleDeg = (entryAngleRad * 180) / Math.PI;
 
     // Apparent rim ellipse opening viewed from ball trajectory: D_eff = D_rim * sin(theta_entry)
@@ -163,7 +259,7 @@ export class TrajectoryCalculator {
       apexHeight,
       horizontalDistance: d,
       requiredHeadingRad,
-      entryVelocity: { x: vx, y: vyArrival, z: vz },
+      entryVelocity: { x: vxArrival, y: vyArrival, z: vzArrival },
       entryAngleDeg,
       isDescending,
       effectiveRimDiameter,
@@ -279,14 +375,54 @@ export class TrajectoryCalculator {
   }
 
   /**
-   * Predicts ball position at time t along theoretical ballistic trajectory.
-   * Useful for trajectory validation and visualization.
+   * Predicts ball position at time t along theoretical ballistic trajectory,
+   * accounting for Rapier linear damping when linearDamping > 0.
+   *
+   * @param {{ x: number, y: number, z: number }} launchPos Initial launch point
+   * @param {{ x: number, y: number, z: number }} launchVelocity Initial launch velocity vector
+   * @param {number} t Flight time in seconds
+   * @returns {{ x: number, y: number, z: number }}
    */
   predictPositionAtTime(launchPos, launchVelocity, t) {
+    const gamma = this.linearDamping;
+    const g = this.gravity;
+
+    if (gamma <= 1e-7 || t <= 0) {
+      return {
+        x: launchPos.x + launchVelocity.x * t,
+        y: launchPos.y + launchVelocity.y * t - 0.5 * g * t * t,
+        z: launchPos.z + launchVelocity.z * t
+      };
+    }
+
+    const expTerm = Math.exp(-gamma * t);
+    const intFactor = (1 - expTerm) / gamma;
+
     return {
-      x: launchPos.x + launchVelocity.x * t,
-      y: launchPos.y + launchVelocity.y * t - 0.5 * this.gravity * t * t,
-      z: launchPos.z + launchVelocity.z * t
+      x: launchPos.x + launchVelocity.x * intFactor,
+      y: launchPos.y + (launchVelocity.y + g / gamma) * intFactor - (g / gamma) * t,
+      z: launchPos.z + launchVelocity.z * intFactor
     };
+  }
+
+  /**
+   * Generates discrete trajectory points from launch position to target arrival.
+   * Useful for trajectory validation and visualization.
+   *
+   * @param {{ x: number, y: number, z: number }} launchPos
+   * @param {{ x: number, y: number, z: number }} launchVelocity
+   * @param {number} flightTime Total flight duration in seconds
+   * @param {number} [numPoints=50] Number of sampling steps
+   * @returns {Array<{ x: number, y: number, z: number, t: number }>}
+   */
+  calculateTrajectoryPoints(launchPos, launchVelocity, flightTime, numPoints = 50) {
+    const points = [];
+    const count = Math.max(2, numPoints);
+    for (let i = 0; i <= count; i++) {
+      const t = (i / count) * flightTime;
+      const pos = this.predictPositionAtTime(launchPos, launchVelocity, t);
+      points.push({ ...pos, t });
+    }
+    return points;
   }
 }

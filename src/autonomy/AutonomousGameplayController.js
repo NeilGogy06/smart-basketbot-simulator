@@ -63,6 +63,7 @@ export class AutonomousGameplayController {
 
     // Tracking prior shot counter to detect newly scored/missed shots
     this._lastEvaluatedShotId = null;
+    this._shotOutcomeRecorded = false;
 
     // Register state change listener
     this.stateMachine.onStateChange((from, to, reason) => {
@@ -104,16 +105,17 @@ export class AutonomousGameplayController {
     this.mode = mode;
     this.targetShots = targetShots;
     this.statistics.startTime = Date.now();
+    this._shotOutcomeRecorded = false;
     this.resetRetries();
 
     // Prevent controller conflicts: assign autonomous mode and yield manual keys
     if (this.robot) {
       this.robot.setControlMode('AUTONOMOUS');
       this.robot.inputController?.resetKeys();
-      if (this.robot.navController) {
+      if (typeof this.robot.navController?.cancel === 'function') {
         this.robot.navController.cancel();
       }
-      if (this.robot.shootingController) {
+      if (typeof this.robot.shootingController?.cancel === 'function') {
         this.robot.shootingController.cancel();
       }
     }
@@ -204,6 +206,7 @@ export class AutonomousGameplayController {
       sessionDuration: 0.0
     };
     this._lastEvaluatedShotId = null;
+    this._shotOutcomeRecorded = false;
   }
 
   /**
@@ -590,6 +593,7 @@ export class AutonomousGameplayController {
 
         if (fired) {
           this.statistics.totalAttempts++;
+          this._shotOutcomeRecorded = false;
           if (this.hoopDetector) {
             this.hoopDetector.notifyShotFired(shotInfo);
           }
@@ -613,8 +617,22 @@ export class AutonomousGameplayController {
         const lastResult = shotStats?.lastShotResult; // 'SCORED', 'MISSED', 'IN_FLIGHT'
 
         if (lastResult === 'SCORED') {
-          this.statistics.successfulShots++;
-          this.updateAccuracy();
+          if (!this._shotOutcomeRecorded) {
+            this._shotOutcomeRecorded = true;
+            this.statistics.successfulShots++;
+            this.updateAccuracy();
+
+            // Inform adaptive corrector of scored outcome so decay damping is applied
+            const details = this.hoopDetector?.lastShotDetails;
+            const corrector = this.robot.adaptiveCorrector || this.robot.adaptiveShotCorrector;
+            if (details && corrector) {
+              if (typeof corrector.recordShotOutcome === 'function') {
+                corrector.recordShotOutcome(details);
+              } else if (typeof corrector.recordOutcome === 'function') {
+                corrector.recordOutcome(details);
+              }
+            }
+          }
 
           // Check mission completion for FIXED_TARGET mode
           const completion = this.decisionEngine.evaluateMissionCompletion(
@@ -639,13 +657,21 @@ export class AutonomousGameplayController {
         }
 
         if (lastResult === 'MISSED' || (shotStats?.lastDetailedResult && shotStats.lastDetailedResult.startsWith('MISSED_'))) {
-          this.statistics.missedShots++;
-          this.updateAccuracy();
+          if (!this._shotOutcomeRecorded) {
+            this._shotOutcomeRecorded = true;
+            this.statistics.missedShots++;
+            this.updateAccuracy();
 
-          // Inform adaptive corrector with detailed miss outcome
-          const details = this.hoopDetector?.lastShotDetails;
-          if (details && this.robot.adaptiveCorrector) {
-            this.robot.adaptiveCorrector.recordOutcome(details);
+            // Inform adaptive corrector with detailed miss outcome
+            const details = this.hoopDetector?.lastShotDetails;
+            const corrector = this.robot.adaptiveCorrector || this.robot.adaptiveShotCorrector;
+            if (details && corrector) {
+              if (typeof corrector.recordShotOutcome === 'function') {
+                corrector.recordShotOutcome(details);
+              } else if (typeof corrector.recordOutcome === 'function') {
+                corrector.recordOutcome(details);
+              }
+            }
           }
 
           this.stateMachine.transitionTo(
@@ -657,8 +683,11 @@ export class AutonomousGameplayController {
 
         // Timeout fallback if ball did not trigger resolution within shotEvaluationTimeout
         if (timeInState >= this.config.shotEvaluationTimeout) {
-          this.statistics.missedShots++;
-          this.updateAccuracy();
+          if (!this._shotOutcomeRecorded) {
+            this._shotOutcomeRecorded = true;
+            this.statistics.missedShots++;
+            this.updateAccuracy();
+          }
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.REACQUIRING_BALL,
             'Shot trajectory evaluation timed out: registering attempt and continuing'
@@ -768,15 +797,18 @@ export class AutonomousGameplayController {
   getMuzzlePosition() {
     const robotPos = this.robot.getPosition();
     const heading = this.robot.getHeading();
-    const muzzleLocal = this.robot.shooter?.muzzleLocalPos ?? { x: 0.20, y: 0.45, z: 0.0 };
+    const muzzleLocal = this.robot.shooter?.muzzleLocalPos ?? { x: 0.54, y: 0.45, z: 0.0 };
 
     const cosH = Math.cos(heading);
     const sinH = Math.sin(heading);
+    const mx = muzzleLocal.x;
+    const my = muzzleLocal.y;
+    const mz = muzzleLocal.z || 0.0;
 
     return {
-      x: robotPos.x + cosH * muzzleLocal.x,
-      y: robotPos.y + muzzleLocal.y,
-      z: robotPos.z - sinH * muzzleLocal.x
+      x: robotPos.x + cosH * mx - sinH * mz,
+      y: robotPos.y + my,
+      z: robotPos.z - sinH * mx - cosH * mz
     };
   }
 

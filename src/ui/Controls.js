@@ -34,15 +34,15 @@ export class Controls {
         <span class="control-group-label">SIMULATION</span>
         <div class="button-row">
           <button id="btn-start" class="btn btn-primary" title="Start / Resume physics (P)">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 8 5 v 14 l 11 -7 z"/></svg>
             <span>Start</span>
           </button>
           <button id="btn-pause" class="btn btn-secondary" title="Pause physics (P)">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 6 19 h 4 V 5 H 6 v 14 z m 8 -14 v 14 h 4 V 5 h -4 z"/></svg>
             <span>Pause</span>
           </button>
           <button id="btn-reset" class="btn btn-danger" title="Reset entire simulation (R)">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 12 5 V 1 L 7 6 l 5 5 V 7 c 3.31 0 6 2.69 6 6 s -2.69 6 -6 6 c -2.69 0 -6 -2.69 -6 -6 H 4 c 0 4.42 3.58 8 8 8 s 8 -3.58 8 -8 s -3.58 -8 -8 -8 z"/></svg>
             <span>Reset All</span>
           </button>
         </div>
@@ -58,11 +58,11 @@ export class Controls {
             <span>Reset Ball</span>
           </button>
           <button id="btn-reset-robot" class="btn btn-subtle" title="Reset robot to starting position">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a2 2 0 0 1 2 2v1h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3V4a2 2 0 0 1 2-2m-3 8a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3m6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 12 2 a 2 2 0 0 1 2 2 v 1 h 3 a 2 2 0 0 1 2 2 v 10 a 2 2 0 0 1 -2 2 H 7 a 2 2 0 0 1 -2 -2 V 7 a 2 2 0 0 1 2 -2 h 3 V 4 a 2 2 0 0 1 2 -2 m -3 8 a 1.5 1.5 0 1 0 0 3 a 1.5 1.5 0 0 0 0 -3 m 6 0 a 1.5 1.5 0 1 0 0 3 a 1.5 1.5 0 0 0 0 -3 z"/></svg>
             <span>Reset Robot</span>
           </button>
           <button id="btn-drop-test" class="btn btn-accent" title="Drop ball from 3.2m to test Rapier bouncing (T)">
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 19 9 h -4 V 3 H 9 v 6 H 5 l 7 7 7 -7 z M 5 18 v 2 h 14 v -2 H 5 z"/></svg>
             <span>Drop Test</span>
           </button>
         </div>

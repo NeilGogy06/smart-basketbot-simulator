@@ -126,7 +126,8 @@ export const SIMULATION_CONFIG = {
     shooter: {
       barrelLength: 0.38,
       barrelDiameter: 0.26,
-      elevationAngleDeg: 52
+      elevationAngleDeg: 52,
+      muzzleLocalPos: { x: 0.54, y: 0.45, z: 0.0 }
     },
     mass: 38.0, // kg
     initialPosition: { x: 1.5, y: 0.14, z: 1.0 },

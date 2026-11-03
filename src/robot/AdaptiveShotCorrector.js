@@ -121,6 +121,17 @@ export class AdaptiveShotCorrector {
   }
 
   /**
+   * Compatibility alias for recordShotOutcome.
+   * Updates adaptive parameters based on the observed physical outcome of a shot.
+   *
+   * @param {Object} shotRecord Detailed record from HoopDetector
+   * @returns {{ velocityBias: number, elevationBias: number, headingBias: number, action: string }}
+   */
+  recordOutcome(shotRecord) {
+    return this.recordShotOutcome(shotRecord);
+  }
+
+  /**
    * Applies cumulative adaptive biases to nominal ballistic trajectory parameters.
    *
    * @param {Object} nominalParams

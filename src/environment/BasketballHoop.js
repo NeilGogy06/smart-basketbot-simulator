@@ -222,7 +222,7 @@ export class BasketballHoop {
 
     // 1. Backboard Solid Collider
     // Restitution: 0.72 for realistic basketball rebound
-    this.physicsWorld.createStaticBox(
+    const { body: backboardBody, collider: backboardCollider } = this.physicsWorld.createStaticBox(
       this.backboardX,
       backboardCenterY,
       0,
@@ -232,36 +232,58 @@ export class BasketballHoop {
       0.72,
       0.5
     );
+    this.backboardBody = backboardBody;
+    this.backboardCollider = backboardCollider;
 
-    // 2. Segmented Rim Colliders
-    // Approximate circular rim with 12 static box segments around the circumference.
-    // The central opening remains unobstructed so a shot can pass through!
-    const numSegments = 12;
-    const R = this.config.rimRadius;
-    const segThickness = this.config.rimTubeRadius * 2.2;
-    const segHeight = 0.04;
-    const segLength = (2 * Math.PI * R) / numSegments * 1.05;
+    // 2. Segmented Rim Colliders (Compound Collider on a single fixed rigid body)
+    // Approximates circular rim with 16 tangentially rotated box segments around circumference.
+    // Each segment is oriented tangentially so its inner face aligns with the true inner rim perimeter,
+    // preserving an unobstructed opening diameter of 2 * (R - rimTubeRadius) = 0.426m (matching 0.45m rim),
+    // cleanly clearing the 0.24m basketball with a ~9.3cm clearance margin on all sides.
+    const numSegments = 16;
+    const R = this.config.rimRadius; // 0.225m
+    const tubeRadius = this.config.rimTubeRadius; // 0.012m
+    const hx = tubeRadius; // radial half-thickness = 0.012m
+    const hy = tubeRadius; // vertical half-height = 0.012m
+    const dTheta = (2 * Math.PI) / numSegments;
+    const hz = R * Math.sin(dTheta / 2) * 1.05; // tangential half-length = ~0.046m
 
+    const rimColliderConfigs = [];
     for (let i = 0; i < numSegments; i++) {
-      const angle = (i * 2 * Math.PI) / numSegments;
-      const segX = this.rimX + Math.cos(angle) * R;
-      const segZ = this.rimZ + Math.sin(angle) * R;
+      const angle = i * dTheta;
+      const tx = Math.cos(angle) * R;
+      const tz = Math.sin(angle) * R;
+      const halfAngle = -angle / 2;
+      const rot = {
+        x: 0,
+        y: Math.sin(halfAngle),
+        z: 0,
+        w: Math.cos(halfAngle)
+      };
 
-      // Small tangential box
-      this.physicsWorld.createStaticBox(
-        segX,
-        this.rimY,
-        segZ,
-        segThickness,
-        segHeight,
-        segLength,
-        0.68, // Metallic rim bounce
-        0.4
-      );
+      rimColliderConfigs.push({
+        type: 'cuboid',
+        hx,
+        hy,
+        hz,
+        translation: { x: tx, y: 0, z: tz },
+        rotation: rot,
+        restitution: 0.68, // Metallic rim bounce
+        friction: 0.4
+      });
     }
 
+    const { body: rimBody, colliders: rimColliders } = this.physicsWorld.createStaticCompound(
+      this.rimX,
+      this.rimY,
+      this.rimZ,
+      rimColliderConfigs
+    );
+    this.rimBody = rimBody;
+    this.rimColliders = rimColliders;
+
     // 3. Stanchion Base Collider
-    this.physicsWorld.createStaticBox(
+    const { body: stanchionBody, collider: stanchionCollider } = this.physicsWorld.createStaticBox(
       this.stanchionX + this.side * 0.7,
       0.45,
       0,
@@ -271,6 +293,8 @@ export class BasketballHoop {
       0.3,
       0.7
     );
+    this.stanchionBody = stanchionBody;
+    this.stanchionCollider = stanchionCollider;
   }
 
   /**

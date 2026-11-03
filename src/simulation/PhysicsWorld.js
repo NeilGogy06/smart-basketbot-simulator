@@ -74,6 +74,61 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a static rigid body with multiple oriented compound colliders.
+   * Enables accurate non-axis-aligned boundary representations (such as circular basketball rims)
+   * on a single rigid body without creating independent rigid bodies.
+   *
+   * @param {number} x World position X of body origin
+   * @param {number} y World position Y of body origin
+   * @param {number} z World position Z of body origin
+   * @param {Array<{
+   *   type?: 'cuboid'|'ball',
+   *   hx?: number, hy?: number, hz?: number,
+   *   radius?: number,
+   *   translation?: { x: number, y: number, z: number },
+   *   rotation?: { x: number, y: number, z: number, w: number },
+   *   restitution?: number,
+   *   friction?: number
+   * }>} colliderConfigs
+   * @returns {{ body: RAPIER.RigidBody, colliders: Array<RAPIER.Collider> }}
+   */
+  createStaticCompound(x, y, z, colliderConfigs = []) {
+    if (!this.world) throw new Error('PhysicsWorld not initialized');
+
+    const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z);
+    const body = this.world.createRigidBody(bodyDesc);
+    const colliders = [];
+
+    for (const cfg of colliderConfigs) {
+      let colliderDesc;
+      if (cfg.type === 'ball') {
+        colliderDesc = RAPIER.ColliderDesc.ball(cfg.radius);
+      } else {
+        // Default to cuboid
+        colliderDesc = RAPIER.ColliderDesc.cuboid(cfg.hx, cfg.hy, cfg.hz);
+      }
+
+      if (cfg.translation) {
+        colliderDesc.setTranslation(cfg.translation.x, cfg.translation.y, cfg.translation.z);
+      }
+      if (cfg.rotation) {
+        colliderDesc.setRotation(cfg.rotation);
+      }
+      if (cfg.restitution !== undefined) {
+        colliderDesc.setRestitution(cfg.restitution);
+      }
+      if (cfg.friction !== undefined) {
+        colliderDesc.setFriction(cfg.friction);
+      }
+
+      const collider = this.world.createCollider(colliderDesc, body);
+      colliders.push(collider);
+    }
+
+    return { body, colliders };
+  }
+
+  /**
    * Creates a dynamic spherical body (e.g. basketball).
    */
   createDynamicSphere(x, y, z, radius, mass, restitution = 0.82, friction = 0.65, linearDamping = 0.08, angularDamping = 0.1) {
