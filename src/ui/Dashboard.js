@@ -22,6 +22,7 @@ export class Dashboard {
     this.bindNavigationControls();
     this.bindShooterAndIntakeControls();
     this.bindVisionControls();
+    this.bindAutonomousGameplayControls();
     this.subscribeTelemetry();
   }
 
@@ -70,6 +71,102 @@ export class Dashboard {
 
       <!-- SIDEBAR TELEMETRY PANELS -->
       <aside class="sim-telemetry-panel">
+
+        <!-- AUTONOMOUS BASKETBALL INTELLIGENCE (MILESTONE 7) -->
+        <div class="telemetry-card card-autonomy">
+          <div class="card-header">
+            <div class="card-title-wrap">
+              <svg class="card-icon text-cyan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="12 6 12 12 16 14"></polygon>
+              </svg>
+              <span>AUTONOMOUS INTELLIGENCE</span>
+            </div>
+            <span class="badge badge-slate" id="gameplay-state-badge">IDLE</span>
+          </div>
+
+          <!-- Current Autonomous Task / Diagnostic Message -->
+          <div class="nav-status-banner font-mono text-cyan" id="gameplay-task-msg" style="margin-bottom: 8px;">
+            Autonomous intelligence ready.
+          </div>
+
+          <!-- Recovery / Error alert banner (hidden when healthy) -->
+          <div class="autonomy-alert-banner font-mono" id="gameplay-error-banner" style="display: none; margin-bottom: 8px;"></div>
+
+          <!-- Gameplay Mode Launch Controls -->
+          <div class="nav-action-row" style="margin-bottom: 6px;">
+            <button class="btn btn-primary btn-nav-action" id="btn-gameplay-continuous" title="Start continuous autonomous basketball search, intake, positioning and shooting">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+              <span>Continuous</span>
+            </button>
+            <div class="target-input-wrap">
+              <input type="number" id="input-target-shots" min="1" max="50" value="5" class="font-mono" title="Target successful baskets">
+              <button class="btn btn-accent btn-nav-action" id="btn-gameplay-target" title="Play until specified target number of successful baskets are scored">
+                <span>Target Play</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Session Flow Controls (Pause / Resume / Stop / Reset) -->
+          <div class="nav-action-row" style="margin-bottom: 8px;">
+            <button class="btn btn-secondary btn-nav-action" id="btn-gameplay-pause" title="Pause session">
+              <span>Pause</span>
+            </button>
+            <button class="btn btn-secondary btn-nav-action" id="btn-gameplay-resume" title="Resume session">
+              <span>Resume</span>
+            </button>
+            <button class="btn btn-danger btn-nav-action" id="btn-gameplay-stop" title="Stop session">
+              <span>Stop</span>
+            </button>
+            <button class="btn btn-subtle btn-nav-action" id="btn-gameplay-reset" title="Reset stats and session">
+              <span>Reset</span>
+            </button>
+          </div>
+
+          <!-- Autonomy Telemetry Grid -->
+          <div class="telemetry-grid">
+            <div class="grid-item">
+              <span class="grid-label">State</span>
+              <span class="grid-value font-mono text-cyan" id="gameplay-state">IDLE</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Target Ball</span>
+              <span class="grid-value font-mono text-amber" id="gameplay-target-ball">NONE</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Ball Range</span>
+              <span class="grid-value font-mono" id="gameplay-ball-dist">-- m</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Hoop Visible</span>
+              <span class="grid-value font-mono text-muted" id="gameplay-hoop-vis">NO</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Possession</span>
+              <span class="grid-value font-mono text-amber" id="gameplay-possession">CLEAR</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Shooter Ready</span>
+              <span class="grid-value font-mono" id="gameplay-shooter-ready">NO</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Baskets Scored</span>
+              <span class="grid-value font-mono text-success" id="gameplay-stat-scored">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Total Attempts</span>
+              <span class="grid-value font-mono" id="gameplay-stat-attempts">0</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Target Left</span>
+              <span class="grid-value font-mono text-cyan" id="gameplay-stat-remaining">--</span>
+            </div>
+            <div class="grid-item">
+              <span class="grid-label">Recoveries</span>
+              <span class="grid-value font-mono" id="gameplay-stat-recoveries">0</span>
+            </div>
+          </div>
+        </div>
 
         <!-- AUTONOMOUS SHOOTER SUITE & CLOSED-LOOP CONTROL -->
         <div class="telemetry-card card-auto-shooter">
@@ -611,6 +708,22 @@ export class Dashboard {
       simSteps: this.domElement.querySelector('#txt-sim-steps'),
       fps: this.domElement.querySelector('#txt-fps'),
 
+      // Milestone 7 Autonomous Gameplay Nodes
+      gameplayBadge: this.domElement.querySelector('#gameplay-state-badge'),
+      gameplayTaskMsg: this.domElement.querySelector('#gameplay-task-msg'),
+      gameplayErrorBanner: this.domElement.querySelector('#gameplay-error-banner'),
+      inputTargetShots: this.domElement.querySelector('#input-target-shots'),
+      gameplayState: this.domElement.querySelector('#gameplay-state'),
+      gameplayTargetBall: this.domElement.querySelector('#gameplay-target-ball'),
+      gameplayBallDist: this.domElement.querySelector('#gameplay-ball-dist'),
+      gameplayHoopVis: this.domElement.querySelector('#gameplay-hoop-vis'),
+      gameplayPossession: this.domElement.querySelector('#gameplay-possession'),
+      gameplayShooterReady: this.domElement.querySelector('#gameplay-shooter-ready'),
+      gameplayStatScored: this.domElement.querySelector('#gameplay-stat-scored'),
+      gameplayStatAttempts: this.domElement.querySelector('#gameplay-stat-attempts'),
+      gameplayStatRemaining: this.domElement.querySelector('#gameplay-stat-remaining'),
+      gameplayStatRecoveries: this.domElement.querySelector('#gameplay-stat-recoveries'),
+
       // Autonomous Shooter Workflow & Trajectory nodes
       workflowStageBadge: this.domElement.querySelector('#workflow-stage-badge'),
       workflowStatusMsg: this.domElement.querySelector('#workflow-status-msg'),
@@ -975,6 +1088,56 @@ export class Dashboard {
   }
 
   /**
+   * Binds Milestone 7 Autonomous Gameplay controls and session buttons.
+   */
+  bindAutonomousGameplayControls() {
+    const btnContinuous = this.domElement.querySelector('#btn-gameplay-continuous');
+    const btnTarget = this.domElement.querySelector('#btn-gameplay-target');
+    const inputTarget = this.domElement.querySelector('#input-target-shots');
+    const btnPause = this.domElement.querySelector('#btn-gameplay-pause');
+    const btnResume = this.domElement.querySelector('#btn-gameplay-resume');
+    const btnStop = this.domElement.querySelector('#btn-gameplay-stop');
+    const btnReset = this.domElement.querySelector('#btn-gameplay-reset');
+
+    if (btnContinuous) {
+      btnContinuous.addEventListener('click', () => {
+        this.simulation.startAutonomousContinuous();
+      });
+    }
+
+    if (btnTarget) {
+      btnTarget.addEventListener('click', () => {
+        const targetVal = inputTarget ? parseInt(inputTarget.value, 10) : 5;
+        this.simulation.startAutonomousFixedTarget(targetVal || 5);
+      });
+    }
+
+    if (btnPause) {
+      btnPause.addEventListener('click', () => {
+        this.simulation.pauseAutonomousGameplay();
+      });
+    }
+
+    if (btnResume) {
+      btnResume.addEventListener('click', () => {
+        this.simulation.resumeAutonomousGameplay();
+      });
+    }
+
+    if (btnStop) {
+      btnStop.addEventListener('click', () => {
+        this.simulation.stopAutonomousGameplay();
+      });
+    }
+
+    if (btnReset) {
+      btnReset.addEventListener('click', () => {
+        this.simulation.resetAutonomousGameplay();
+      });
+    }
+  }
+
+  /**
    * Subscribes to real-time simulation updates.
    */
   subscribeTelemetry() {
@@ -1001,6 +1164,91 @@ export class Dashboard {
     this.nodes.simTime.textContent = `${data.simTime.toFixed(2)} s`;
     this.nodes.simSteps.textContent = `#${data.stepCount}`;
     this.nodes.fps.textContent = `${data.fps}`;
+
+    // Milestone 7 Complete Autonomous Intelligence Telemetry
+    if (data.autonomy) {
+      const auto = data.autonomy;
+      const st = auto.state || 'IDLE';
+
+      if (this.nodes.gameplayBadge) {
+        this.nodes.gameplayBadge.textContent = st;
+        if (st === 'COMPLETED') {
+          this.nodes.gameplayBadge.className = 'badge badge-green';
+        } else if (st === 'FAILED' || st === 'CANCELLED') {
+          this.nodes.gameplayBadge.className = 'badge badge-red';
+        } else if (st === 'PAUSED') {
+          this.nodes.gameplayBadge.className = 'badge badge-amber';
+        } else if (st === 'RECOVERING') {
+          this.nodes.gameplayBadge.className = 'badge badge-amber';
+        } else if (st !== 'IDLE') {
+          this.nodes.gameplayBadge.className = 'badge badge-cyan';
+        } else {
+          this.nodes.gameplayBadge.className = 'badge badge-slate';
+        }
+      }
+
+      if (this.nodes.gameplayState) {
+        this.nodes.gameplayState.textContent = st;
+      }
+
+      if (this.nodes.gameplayTaskMsg) {
+        this.nodes.gameplayTaskMsg.textContent = auto.statusMessage || `State: ${st}`;
+      }
+
+      if (this.nodes.gameplayErrorBanner) {
+        if (st === 'RECOVERING' || st === 'FAILED') {
+          this.nodes.gameplayErrorBanner.style.display = 'block';
+          this.nodes.gameplayErrorBanner.textContent = auto.statusMessage || 'Recovery action underway';
+        } else {
+          this.nodes.gameplayErrorBanner.style.display = 'none';
+        }
+      }
+
+      if (this.nodes.gameplayTargetBall) {
+        this.nodes.gameplayTargetBall.textContent = auto.target?.id || 'NONE';
+      }
+
+      if (this.nodes.gameplayBallDist) {
+        this.nodes.gameplayBallDist.textContent = auto.target?.distance != null
+          ? `${auto.target.distance.toFixed(2)} m`
+          : '-- m';
+      }
+
+      if (this.nodes.gameplayHoopVis) {
+        this.nodes.gameplayHoopVis.textContent = auto.hoop?.visible ? 'YES' : 'NO';
+        this.nodes.gameplayHoopVis.className = auto.hoop?.visible
+          ? 'grid-value font-mono text-success'
+          : 'grid-value font-mono text-muted';
+      }
+
+      if (this.nodes.gameplayPossession) {
+        this.nodes.gameplayPossession.textContent = auto.possession?.hasBall ? 'CAPTURED' : (auto.possession?.state || 'CLEAR');
+        this.nodes.gameplayPossession.className = auto.possession?.hasBall
+          ? 'grid-value font-mono text-success'
+          : 'grid-value font-mono text-amber';
+      }
+
+      if (this.nodes.gameplayShooterReady) {
+        this.nodes.gameplayShooterReady.textContent = auto.shooter?.isReady ? 'READY' : (auto.shooter?.state || 'IDLE');
+        this.nodes.gameplayShooterReady.className = auto.shooter?.isReady
+          ? 'grid-value font-mono text-success'
+          : 'grid-value font-mono';
+      }
+
+      if (this.nodes.gameplayStatScored && auto.statistics) {
+        this.nodes.gameplayStatScored.textContent = `${auto.statistics.successfulShots || 0}`;
+        this.nodes.gameplayStatAttempts.textContent = `${auto.statistics.totalAttempts || 0}`;
+        this.nodes.gameplayStatRecoveries.textContent = `${auto.statistics.recoveryAttempts || 0}`;
+
+        if (this.nodes.gameplayStatRemaining) {
+          if (auto.mode === 'FIXED_TARGET') {
+            this.nodes.gameplayStatRemaining.textContent = `${auto.remainingShots ?? 0}`;
+          } else {
+            this.nodes.gameplayStatRemaining.textContent = 'INF (CONT)';
+          }
+        }
+      }
+    }
 
     const r = data.robot;
 

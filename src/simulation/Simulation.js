@@ -18,6 +18,7 @@ import { PathVisualizer } from '../navigation/PathVisualizer.js';
 import { HoopDetector } from '../robot/HoopDetector.js';
 import { AutonomousShooterWorkflow } from '../navigation/AutonomousShooterWorkflow.js';
 import { VisionManager } from '../vision/VisionManager.js';
+import { AutonomousGameplayController } from '../autonomy/AutonomousGameplayController.js';
 
 export class Simulation {
   /**
@@ -53,6 +54,7 @@ export class Simulation {
     this.hoopDetector = null;
     this.shooterWorkflow = null;
     this.visionManager = null;
+    this.gameplayController = null;
 
     // Animation frame handle
     this.animationFrameId = null;
@@ -103,6 +105,14 @@ export class Simulation {
     // Robot Vision & Camera perception system
     this.visionManager = new VisionManager(SIMULATION_CONFIG.vision);
     this.visionManager.initialize(this.scene, this.renderer);
+
+    // Complete Autonomous Gameplay Controller (Milestone 7)
+    this.gameplayController = new AutonomousGameplayController({
+      robot: this.robot,
+      visionManager: this.visionManager,
+      hoopDetector: this.hoopDetector,
+      basketball: this.basketball
+    });
 
     // Autonomous Navigation Path Visualizer
     this.pathVisualizer = new PathVisualizer(this.scene);
@@ -232,8 +242,11 @@ export class Simulation {
       this.hoopDetector.update(ballPos, ballVel, deltaTime);
     }
 
-    // Step autonomous acquisition and shooting workflow
-    if (this.shooterWorkflow) {
+    // Step complete autonomous basketball intelligence (Milestone 7)
+    if (this.gameplayController && this.gameplayController.isActive) {
+      this.gameplayController.update(deltaTime);
+    } else if (this.shooterWorkflow) {
+      // Step standalone acquisition and shooting workflow when gameplay controller is not active
       this.shooterWorkflow.update(deltaTime);
     }
 
@@ -336,7 +349,8 @@ export class Simulation {
       },
       shooterWorkflow: this.shooterWorkflow ? this.shooterWorkflow.getTelemetry() : {},
       shotStats: this.hoopDetector ? this.hoopDetector.getTelemetry() : {},
-      vision: this.visionManager ? this.visionManager.getTelemetry() : {}
+      vision: this.visionManager ? this.visionManager.getTelemetry() : {},
+      autonomy: this.gameplayController ? this.gameplayController.getStatus() : {}
     };
 
     for (let i = 0; i < this.telemetryCallbacks.length; i++) {
@@ -395,6 +409,7 @@ export class Simulation {
     if (this.hoopDetector) this.hoopDetector.reset();
     if (this.shooterWorkflow) this.shooterWorkflow.reset();
     if (this.visionManager) this.visionManager.reset();
+    if (this.gameplayController) this.gameplayController.reset();
     if (this.pathVisualizer) this.pathVisualizer.clear();
     console.log('[Simulation] Simulation reset to initial state.');
   }
@@ -574,6 +589,7 @@ export class Simulation {
     if (this.pathVisualizer) this.pathVisualizer.destroy();
     if (this.shooterWorkflow) this.shooterWorkflow.reset();
     if (this.visionManager) this.visionManager.destroy();
+    if (this.gameplayController) this.gameplayController.stop();
     if (this.robot) this.robot.destroy();
     if (this.physicsWorld) this.physicsWorld.destroy();
   }
@@ -618,6 +634,68 @@ export class Simulation {
   setVisionResolution(width, height) {
     if (this.visionManager) {
       this.visionManager.setResolution(width, height);
+    }
+  }
+
+  // ================= AUTONOMOUS GAMEPLAY CONTROLS (M7) =================
+
+  /**
+   * Begins autonomous continuous gameplay.
+   */
+  startAutonomousContinuous() {
+    if (this.gameplayController) {
+      return this.gameplayController.startContinuousMode();
+    }
+    return false;
+  }
+
+  /**
+   * Begins autonomous gameplay with fixed successful basket target.
+   * @param {number} targetShots
+   */
+  startAutonomousFixedTarget(targetShots = 5) {
+    if (this.gameplayController) {
+      return this.gameplayController.startFixedTargetMode(targetShots);
+    }
+    return false;
+  }
+
+  /**
+   * Pauses autonomous gameplay session.
+   */
+  pauseAutonomousGameplay() {
+    if (this.gameplayController) {
+      return this.gameplayController.pause();
+    }
+    return false;
+  }
+
+  /**
+   * Resumes paused autonomous gameplay session.
+   */
+  resumeAutonomousGameplay() {
+    if (this.gameplayController) {
+      return this.gameplayController.resume();
+    }
+    return false;
+  }
+
+  /**
+   * Stops/cancels autonomous gameplay session.
+   */
+  stopAutonomousGameplay() {
+    if (this.gameplayController) {
+      return this.gameplayController.stop();
+    }
+    return false;
+  }
+
+  /**
+   * Resets autonomous gameplay session and statistics.
+   */
+  resetAutonomousGameplay() {
+    if (this.gameplayController) {
+      this.gameplayController.reset();
     }
   }
 }

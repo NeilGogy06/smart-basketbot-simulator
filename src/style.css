@@ -934,6 +934,39 @@ kbd {
   height: 4px;
 }
 
+/* AUTONOMOUS INTELLIGENCE SUITE (MILESTONE 7) */
+.card-autonomy {
+  border-left: 3px solid var(--accent-orange);
+  background: rgba(15, 23, 42, 0.75);
+}
+
+.target-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.target-input-wrap input {
+  width: 44px;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--accent-cyan);
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.autonomy-alert-banner {
+  font-size: 0.68rem;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  line-height: 1.3;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .sim-telemetry-panel {
