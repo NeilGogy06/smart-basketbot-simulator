@@ -1,97 +1,104 @@
-# SMART-BASKETBOT Simulator — Known Limitations & Sim-to-Real Analysis
+# SMART-BASKETBOT — Known Limitations & Sim-to-Real Analysis
 
-## 1. Overview
-
-While the SMART-BASKETBOT Simulator provides high-fidelity 3D robotics simulation with accurate kinematic models, rigid-body physics, vision raycasting, and closed-loop control, all computer simulations operate under finite modeling abstractions. This document provides an engineering-level disclosure of known simulation boundaries, edge cases, and sim-to-real transfer gaps to assist researchers and engineers planning physical hardware implementation.
-
----
-
-## 2. Physics Simulation Limitations
-
-### 2.1 Fast-Bounce Collider Tunneling at High Velocities
-- **Description**: In discrete-time physics engines, dynamic objects moving at high velocity relative to collider thickness can pass through solid geometry between simulation time steps (the "bullet through paper" problem).
-- **Simulator Implementation**: Rapier3D's Continuous Collision Detection (CCD) is enabled on the basketball dynamic body (`rigidBody.enableCcd(true)`).
-- **Limitation**: At extreme launch velocities exceeding $15.0\text{ m/s}$ or under severe browser frame drops ($\le 25\text{ FPS}$), the ball may occasionally penetrate the rim or backboard edges if sub-stepping limits ($5\text{ sub-steps}$) are exceeded.
-- **Mitigation**: Launch velocities are clamped to safe ballistic operating ranges ($5.0\text{ m/s} \le v \le 12.0\text{ m/s}$).
-
-### 2.2 Constant Coefficient of Restitution
-- **Description**: Real basketball impacts exhibit non-linear viscoelastic restitution where the coefficient of restitution ($e$) decreases at higher impact velocities due to air compression and rubber hysteresis.
-- **Simulator Implementation**: Rapier3D uses a fixed restitution coefficient ($e = 0.82$) across all velocities.
-- **Limitation**: High-speed backboard bank shots rebound with slightly more kinetic energy in simulation than observed on regulation wooden backboards.
-
-### 2.3 Simplified Aerodynamic Drag & Magnus Effect
-- **Description**: Spinning basketballs in free flight experience aerodynamic drag $\mathbf{F}_D = -\frac{1}{2} \rho C_d A \|\mathbf{v}\| \mathbf{v}$ and lateral Magnus force $\mathbf{F}_M = S (\boldsymbol{\omega} \times \mathbf{v})$ created by differential boundary layer separation.
-- **Simulator Implementation**: The simulation calculates ballistic parabolic trajectories with empirical linear and quadratic drag approximations. Backspin angular momentum is injected into the Rapier body upon launch to model rim spin-in traction.
-- **Limitation**: True aerodynamic lift from high-RPM backspin that flattens flight trajectory is approximated via empirical velocity scaling rather than full Navier-Stokes integration.
+**Document ID:** SBB-LIMIT-2026-FINAL  
+**System:** SMART-BASKETBOT Autonomous Robotics Basketball Simulator  
+**Scope:** Engineering Boundaries, Modeling Abstractions, and Transfer Gap Disclosures  
 
 ---
 
-## 3. Perception & Vision Subsystem Limitations
+## 1. Overview & Purpose
 
-### 3.1 Geometric Raycasting vs. Deep Learning Vision
-- **Description**: Physical basketball robots process noisy RGB camera streams using convolutional neural networks (e.g. YOLOv8, MobileNet) to estimate bounding boxes and 3D pose under variable stadium lighting, shadows, and motion blur.
-- **Simulator Implementation**: The simulated camera performs 3D perspective projection, frustum testing, and raycast line-of-sight checks against 3D scene meshes, injecting simulated Gaussian noise and distance-dependent optical confidence metrics.
-- **Limitation**: The vision system does not experience optical aberrations, lens distortion, rolling shutter artifacts, ambient lighting changes, or visual occlusion from spectators and moving referees.
+The SMART-BASKETBOT platform provides high-fidelity, physics-backed 3D robotics simulation with verified kinematic models, rigid-body contact mechanics, synthetic vision raycasting, closed-loop PID control, and an autonomous state machine. However, all computational simulations operate under finite modeling abstractions.
 
-### 3.2 Idealized Hoop Center Estimation
-- **Description**: Real vision systems detect rim rims as 2D projected ellipses and solve Perspective-n-Point (PnP) pose estimation, which suffers from depth ambiguities at distances $> 10\text{m}$.
-- **Simulator Implementation**: The simulator calculates the exact 3D Euclidean coordinates of the hoop rim center $(+12.425, +3.05, 0.0)$, adding small synthetic distance-dependent noise to azimuth and elevation measurements.
+To maintain strict scientific and engineering integrity, this document provides a comprehensive disclosure of known simulation boundaries, physical modeling assumptions, differences between the simulated digital twin and physical robotics hardware, unimplemented features, and recommended future enhancements.
 
 ---
 
-## 4. Actuator & Chassis Motion Limitations
+## 2. Current Implementation Limitations
 
-### 4.1 Kinematic Velocity Control vs. Torque & Motor Saturation
-- **Description**: Physical DC brushless motors (e.g. NEO / Falcon 500) operate under voltage limits, winding resistance, thermal derating, back-EMF saturation, and battery voltage sag under peak current draw.
-- **Simulator Implementation**: The differential drive controller enforces maximum linear and angular velocities and acceleration ramp limits ($a_{\text{max}} = 3.5\text{ m/s}^2$). Velocity setpoints are mapped directly to Rapier rigid body linear and angular velocities.
-- **Limitation**: Transient current spikes, motor thermal degradation, and battery depletion over a 20-minute match are not currently simulated.
+### 2.1 Static 2D Occupancy Grid Mapping
+- **Current Behavior:** The navigation subsystem utilizes a static $112 \times 60$ cell 2D occupancy grid ($0.25\text{m}$ resolution) with $0.42\text{m}$ obstacle inflation around static court elements (hoop stanchions, backboard posts, and perimeter walls).
+- **Limitation:** The grid does not incorporate dynamic costmap layers or Velocity Obstacles (VO) for tracking moving obstacles (e.g. human defenders, other mobile robots, or rolling basketballs). If a moving obstacle obstructs the robot's trajectory, the planner does not perform dynamic local window avoidance; it relies on periodic re-planning ($1.0\text{s}$ interval) upon detecting obstruction.
 
-### 4.2 Wheel-Floor Traction & Wheel Slip
-- **Description**: Real differential drive mobile robots experience longitudinal wheel slip during aggressive acceleration and lateral scrub during high-speed pivot turns.
-- **Simulator Implementation**: Wheels are modeled as non-slipping kinematic inputs driving the chassis body with Rapier friction ($0.7$).
-- **Limitation**: Odometry drift caused by wheel slippage on dusty hardwood floors is not accumulated into the ground-truth robot pose estimator.
+### 2.2 Discrete Time Step CCD Tunneling at Extreme Velocities
+- **Current Behavior:** Rapier3D evaluates rigid-body dynamics using a fixed time step ($\Delta t = 1/60\text{ s}$) with Continuous Collision Detection (CCD) enabled on dynamic basketball bodies (`rigidBody.enableCcd(true)`).
+- **Limitation:** At extreme, unphysical projectile velocities ($v > 16.0\text{ m/s}$) or during severe browser background throttling ($\le 20\text{ FPS}$), the ball may occasionally penetrate thin collider meshes between sub-steps.
+- **Mitigation:** Launcher muzzle velocity is clamped in software to safe operational ballistic bounds ($5.5\text{ m/s} \le v_0 \le 11.5\text{ m/s}$).
 
----
-
-## 5. Navigation & Path Planning Limitations
-
-### 5.1 Static Discretized Occupancy Grid
-- **Description**: The court is mapped into a $0.25\text{m}$ resolution 2D occupancy grid with static obstacle inflation.
-- **Limitation**: Dynamic obstacles (e.g. moving human defenders or referee incursions) are not continuously tracked in a dynamic velocity obstacle (VO) or local costmap layer. The path planner replans at fixed $1.0\text{s}$ intervals if blocked.
+### 2.3 Linearized Aerodynamic Drag Formulation
+- **Current Behavior:** The ballistic trajectory solver models atmospheric resistance using linear velocity-dependent drag ($\mathbf{F}_D = -m \gamma \mathbf{v}$, where $\gamma = 0.08\text{ s}^{-1}$).
+- **Limitation:** In physical fluid dynamics, high-velocity basketball flight experiences quadratic aerodynamic drag ($\mathbf{F}_D = -\frac{1}{2} \rho C_d A \|\mathbf{v}\| \mathbf{v}$) and rotational Magnus lift forces ($\mathbf{F}_M = S (\boldsymbol{\omega} \times \mathbf{v})$) generated by high-RPM backspin. While the linear drag model achieves high empirical accuracy over court distances up to $9.0\text{m}$, it does not model asymmetric Magnus curve deviations.
 
 ---
 
-## 6. Browser & WebGL Environment Limitations
+## 3. Simulation Assumptions
 
-### 6.1 JavaScript Garbage Collection & Frame Drops
-- **Description**: Browser JavaScript engines (V8, SpiderMonkey) execute automatic generational garbage collection. Excessive temporary object allocations per frame cause momentary micro-stutter ($10\text{ms}$ to $50\text{ms}$).
-- **Mitigation**:
-  - Pre-allocated reusable Three.js vectors and quaternions across math loops.
-  - Throttled DOM updates in `Dashboard.js` to 4 Hz ($250\text{ms}$).
-  - Throttled offscreen camera rendering to 15 Hz.
-- **Limitation**: Extreme CPU loads or background browser tab throttling may still introduce frame rate drops below 60 FPS, reducing physics step accuracy if sub-stepping limits are reached.
+The simulator operates under the following formal modeling abstractions:
 
-### 6.2 Headless Node.js Differences
-- **Description**: Vitest executes in headless Node.js where `window`, `document`, and `WebGLRenderingContext` do not natively exist.
-- **Mitigation**: All DOM and Canvas interactions are safely guarded with `typeof document !== 'undefined'`. Offscreen render targets fall back to headless mathematical projection.
+| Subsystem | Simulation Modeling Abstraction | Physical Hardware Reality |
+| :--- | :--- | :--- |
+| **Contact Mechanics** | Coulomb dry friction model ($\mu = 0.65$) with constant coefficient of restitution ($e = 0.82$). | Non-linear viscoelastic restitution varying with impact velocity; thermal compression of compressed air; moisture-dependent grip. |
+| **Drivetrain Traction** | Differential drive kinematics assume zero wheel slip and perfect planar rolling contact. | Wheel slippage during rapid acceleration/braking; lateral scrub during zero-radius pivot turns on hardwood. |
+| **Actuator Dynamics** | Kinematic velocity ramping with software acceleration clamping ($a_{\text{max}} = 1.8\text{ m/s}^2$). | Motor winding resistance, back-EMF voltage saturation, torque-speed curves, thermal derating, and battery voltage sag. |
+| **Optical Perception** | Exact 3D bounding box projection, frustum testing, and raycast line-of-sight occlusion checks. | Sensor noise, optical aberrations, lens distortion, ambient stadium lighting fluctuations, motion blur, and shadows. |
+| **Hoop Geometry** | 16-segment compound rotated rigid-body box collider ring ($0.45\text{m}$ inner diameter). | Continuous toroidal steel rim with spring-loaded breakaway hinge deflection under dynamic ball impact. |
 
 ---
 
-## 7. Sim-to-Real Transfer Gap Analysis
+## 4. Differences Between Simulated and Physical Robotics
 
-For teams deploying the SMART-BASKETBOT architecture to physical hardware (e.g. aluminum chassis, Roborio / Raspberry Pi / Jetson Orin compute), the following bridge components must be introduced:
+It is critical to distinguish the simulated digital twin from physical hardware deployment:
 
 ```
 +-------------------------------------------------------------------------------+
-|                        SIM-TO-REAL TRANSFER ARCHITECTURE                      |
+|                        SIM-TO-REAL GAP TAXONOMY                               |
 +-------------------------------------------------------------------------------+
-| Simulation Layer (SMART-BASKETBOT) | Physical Hardware Equivalent             |
-+------------------------------------+------------------------------------------+
-| Rapier3D Ground Truth Pose         | Extended Kalman Filter (Wheel Enc + IMU) |
-| Synthetic Pinhole Projection       | RealSense D435 / Oak-D Depth Camera      |
-| Raycast Occlusion Gating           | YOLOv8 Object Detection TensorRT Model   |
-| Direct Rapier Velocity Impulses    | CAN Bus Motor Controllers (SparkMax)     |
-| Instantaneous Ball Capture Trigger | Compliant Silicone Roller + IR Beam Gate |
-| Analytic Trajectory Calculator     | Empirical Ballistic Lookup Table         |
+| Engineering Dimension       | Simulation (SMART-BASKETBOT) | Physical Hardware |
++-----------------------------+------------------------------+------------------+
+| Drivetrain Localization     | Exact Rapier3D Ground Truth  | EKF Fusion (Encoders + IMU + SLAM)|
+| Visual Object Perception    | Synthetic 3D Raycasting      | YOLOv8 / Depth Camera Neural Net |
+| Motor Command Pipeline      | Direct Velocity Setpoints    | PWM / CAN Bus Motor Controllers  |
+| Ball Possession Detection   | Simulated Beam-Break Intersect| IR Break-Beam Phototransistor    |
+| Rim Scoring Detection       | Invisible Sensor Trigger Box | Acoustic Vibration / Dual IR Beam|
+| Projectile Launch Energy    | Direct Physical Impulse      | Dual Counter-Rotating Flywheels  |
 +-------------------------------------------------------------------------------+
 ```
+
+1. **State Estimation & Odometry Drift:**
+   - In simulation, the robot's exact global coordinate pose $(x, z, \theta)$ is queried directly from Rapier3D memory buffers with zero cumulative drift.
+   - Physical mobile robots accumulate dead-reckoning drift from wheel slippage and floor unevenness, requiring sensor fusion (e.g. Extended Kalman Filter combining optical wheel encoders, 6-axis IMU, and 2D LiDAR / visual SLAM).
+2. **Computer Vision & Environmental Clutter:**
+   - The simulator calculates ground-truth line-of-sight vectors and applies synthetic occlusion checks against known court stanchions.
+   - Physical deployment requires trained convolutional neural networks (e.g. YOLOv8-nano or MobileNet-SSD) running on edge accelerators (such as NVIDIA Jetson Orin) subject to false positives, background crowd clutter, and variable court lighting.
+3. **Pneumatic / Mechanical Deflection:**
+   - In simulation, the basketball hoop assembly is rigid with zero structural flexion.
+   - Real FIBA regulation basketball hoops incorporate spring-loaded breakaway hinges that deflect downward when struck, absorbing substantial projectile kinetic energy.
+
+---
+
+## 5. Features Not Currently Implemented
+
+To avoid misrepresenting the simulator's capabilities, the following advanced features are explicitly acknowledged as **not currently implemented**:
+
+- **No Multi-Robot Collaborative Play:** The simulator models a single autonomous robot; multi-agent collaborative behaviors (such as automated passing plays, pick-and-roll maneuvers, and defensive zone coverage) are not implemented.
+- **No Moving Human Defenders:** The environment does not currently simulate dynamic opposing player models or human referee interactions.
+- **No Dynamic Local Costmaps (Costmap2D):** The navigation grid does not maintain a real-time rolling obstacle inflation layer for dynamic obstacles.
+- **No Physical Breakaway Rim Spring Dynamics:** The hoop rim is modeled as a static compound collider without elastic spring hinge deflection.
+- **No Pixel-Level Deep Learning Model:** Vision does not execute convolutional inference on raw camera pixels.
+
+---
+
+## 6. Potential Future Improvements
+
+For researchers and engineers continuing this project in future academic semesters, the following engineering roadmap is recommended:
+
+1. **ROS 2 Navigation Bridge (Nav2):**
+   - Implement a WebSocket or WebRTC bridge connecting the Three.js/Rapier3D digital twin to a standard ROS 2 Humble workspace. This will allow the simulator to serve as an official simulation environment for the ROS 2 Nav2 stack.
+2. **Rotational Magnus-Effect Aerodynamics:**
+   - Extend `TrajectoryCalculator.js` and `PhysicsWorld.js` to compute real-time cross-product Magnus forces ($\mathbf{F}_M = S (\boldsymbol{\omega} \times \mathbf{v})$) based on measured flywheel spin differential, enabling realistic backspin trajectory shaping.
+3. **Dynamic Sensor Noise Injection:**
+   - Introduce Gaussian and salt-and-pepper measurement noise to simulated camera readings, wheel odometry encoders, and range estimates to rigorously evaluate filter robustness.
+4. **Physical Breakaway Rim Joint:**
+   - Model the hoop backboard connection using a Rapier3D revolute spring-damper joint to simulate FIBA regulation breakaway rim absorption.
+5. **Multi-Agent Cooperative Robotics:**
+   - Expand the occupancy grid and FSM supervisor to support multiple cooperative robots executing coordinated passing and rebounding strategies.
