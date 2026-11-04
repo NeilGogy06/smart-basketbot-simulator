@@ -65,6 +65,10 @@ export class Controls {
             <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M 19 9 h -4 V 3 H 9 v 6 H 5 l 7 7 7 -7 z M 5 18 v 2 h 14 v -2 H 5 z"/></svg>
             <span>Drop Test</span>
           </button>
+          <button id="btn-clear-traj" class="btn btn-subtle" title="Clear recorded 3D trajectory path (X)">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            <span>Clear Path</span>
+          </button>
         </div>
       </div>
 
@@ -90,6 +94,7 @@ export class Controls {
     this.btnResetBall = this.domElement.querySelector('#btn-reset-ball');
     this.btnResetRobot = this.domElement.querySelector('#btn-reset-robot');
     this.btnDropTest = this.domElement.querySelector('#btn-drop-test');
+    this.btnClearTraj = this.domElement.querySelector('#btn-clear-traj');
 
     this.camButtons = {
       overview: this.domElement.querySelector('#cam-overview'),
@@ -127,6 +132,12 @@ export class Controls {
     this.btnDropTest.addEventListener('click', () => {
       this.simulation.dropBallTest();
     });
+
+    if (this.btnClearTraj) {
+      this.btnClearTraj.addEventListener('click', () => {
+        this.simulation.clearTrajectory();
+      });
+    }
 
     // Camera preset clicks
     Object.keys(this.camButtons).forEach((presetKey) => {
@@ -168,6 +179,14 @@ export class Controls {
         case 'KeyT':
           e.preventDefault();
           this.simulation.dropBallTest();
+          break;
+        case 'KeyY':
+          e.preventDefault();
+          this.simulation.toggleTrajectoryVisibility();
+          break;
+        case 'KeyX':
+          e.preventDefault();
+          this.simulation.clearTrajectory();
           break;
         case 'Digit1':
           this.camButtons.overview.click();

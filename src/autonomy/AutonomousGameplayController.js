@@ -1,12 +1,28 @@
 /**
  * AutonomousGameplayController.js
- * Master autonomous coordinator for SMART-BASKETBOT Milestone 7.
- * Unifies simulated vision perception, A* navigation, intake manipulation,
- * closed-loop trajectory optimization, and adaptive shot evaluation into
- * a robust, self-directing basketball-playing robotics intelligence.
+ * Master autonomous coordinator for SMART-BASKETBOT Milestone 7 & Continuous Gameplay Redesign.
+ *
+ * Implements a 14-state continuous autonomous basketball gameplay cycle:
+ * 1. SEARCHING_FOR_BALL
+ * 2. TRACKING_BALL / SELECTING_TARGET
+ * 3. APPROACHING_BALL / NAVIGATING_TO_BALL
+ * 4. ALIGNING_FOR_INTAKE
+ * 5. COLLECTING_BALL
+ * 6. VERIFYING_POSSESSION
+ * 7. SELECTING_SHOT (Dynamic shooting evaluation from current position)
+ * 8. POSITIONING_FOR_SHOT_IF_NEEDED (Only when current position is physically infeasible)
+ * 9. ALIGNING_WITH_HOOP (Heading PID alignment toward basket)
+ * 10. CALCULATING_SHOT / OPTIMIZING_TRAJECTORY
+ * 11. SPINNING_UP_FLYWHEELS
+ * 12. EXECUTING_SHOT / SHOOTING
+ * 13. TRACKING_SHOT / WAITING_FOR_BALL_TO_LAND
+ * 14. REACQUIRING_BALL / RETURNING_TO_SEARCHING
+ *
+ * Designed for indefinite continuous operation with the same physical basketball,
+ * intelligent non-fatal recovery, and dynamic shooting from any feasible court position.
  */
 
-import { AUTONOMOUS_CONFIG, AUTONOMOUS_STATES, GAMEPLAY_MODES } from './AutonomousConfig.js';
+import { AUTONOMOUS_CONFIG, AUTONOMOUS_STATES, FAILURE_CATEGORIES, GAMEPLAY_MODES } from './AutonomousConfig.js';
 import { AutonomousStateMachine } from './AutonomousStateMachine.js';
 import { AutonomousDecisionEngine } from './AutonomousDecisionEngine.js';
 import { RobotKinematics } from '../robot/RobotKinematics.js';
@@ -47,28 +63,62 @@ export class AutonomousGameplayController {
       sessionDuration: 0.0
     };
 
+    // Diagnostics and recovery state
+    this.consecutiveFailures = 0;
+    this.lastFailureCategory = FAILURE_CATEGORIES.NONE;
+    this.lastFailureReason = 'None';
+    this.currentRecoveryAction = 'NONE';
+    this.lastSuccessfulOperation = 'None';
+
     // Active operational targets and state
     this.currentTarget = null;            // Selected basketball target { id, worldPosition, approachPosition }
     this.targetShootingPos = null;        // Target spot on court for shooting { x, z, hoopTarget }
     this.activeTrajectorySolution = null; // Ballistic trajectory parameters from TrajectoryCalculator
     this.recoveryContext = null;          // Active recovery action and parameters
+    this.activeBallReference = options.basketball || null; // Tracked physical basketball entity
 
     // Retries counters per category
     this.retries = {
+      ballSearch: 0,
       collection: 0,
       navigation: 0,
       alignment: 0,
       spinUp: 0
     };
 
-    // Tracking prior shot counter to detect newly scored/missed shots
+    // Tracking prior shot counter to detect newly scored/missed shots exactly once
     this._lastEvaluatedShotId = null;
     this._shotOutcomeRecorded = false;
+    this._navShootingStarted = false;
+
+    // Perception-to-action telemetry registers (Phase 3 diagnostics)
+    this.targetSelectionStatus = 'DETECTED'; // DETECTED, TRACKED, SELECTED, TARGET_REJECTED, NAVIGATION_REQUESTED, NAVIGATING, ARRIVED, REPLANNING, RECOVERING
+    this.targetRejectionReason = 'NONE';
+    this.lastNavigationCommandTimestamp = null;
+    this.lastKnownBallPose = null; // { x, z, distance, azimuthDeg, timestamp }
+    this._lastLogTime = 0;
+    this._lastLogMessage = '';
 
     // Register state change listener
     this.stateMachine.onStateChange((from, to, reason) => {
       this.handleStateChange(from, to, reason);
     });
+  }
+
+  /**
+   * Throttled diagnostic logging to avoid console flooding while surfacing critical events.
+   * @param {string} category
+   * @param {string} message
+   * @param {boolean} [force=false]
+   */
+  logThrottled(category, message, force = false) {
+    const now = Date.now();
+    if (!force && this._lastLogTime && (now - this._lastLogTime < 1000) && this._lastLogMessage === message) {
+      return;
+    }
+    this._lastLogTime = now;
+    this._lastLogMessage = message;
+    console.log(`[AutonomousIntelligence] [${category}] ${message}`);
   }
 
   // =========================================================================
@@ -85,7 +135,6 @@ export class AutonomousGameplayController {
 
   /**
    * Initiates Fixed Successful-Shot Target mode.
-   * The robot plays until targetShots successful baskets are verified.
    * @param {number} targetShots Number of successful shots required
    */
   startFixedTargetMode(targetShots = 5) {
@@ -106,6 +155,16 @@ export class AutonomousGameplayController {
     this.targetShots = targetShots;
     this.statistics.startTime = Date.now();
     this._shotOutcomeRecorded = false;
+    this._navShootingStarted = false;
+    this.consecutiveFailures = 0;
+    this.lastFailureCategory = FAILURE_CATEGORIES.NONE;
+    this.lastFailureReason = 'None';
+    this.currentRecoveryAction = 'NONE';
+    this.lastSuccessfulOperation = 'SESSION_STARTED';
+    this.targetSelectionStatus = 'DETECTED';
+    this.targetRejectionReason = 'NONE';
+    this.lastNavigationCommandTimestamp = null;
+    this.lastKnownBallPose = null;
     this.resetRetries();
 
     // Prevent controller conflicts: assign autonomous mode and yield manual keys
@@ -124,7 +183,7 @@ export class AutonomousGameplayController {
     const possession = this.decisionEngine.evaluatePossession(this.robot);
     if (possession.hasBall) {
       this.stateMachine.transitionTo(
-        AUTONOMOUS_STATES.SEARCHING_FOR_HOOP,
+        AUTONOMOUS_STATES.VERIFYING_POSSESSION,
         'Starting session with ball already in cradle: locating hoop'
       );
     } else {
@@ -194,6 +253,15 @@ export class AutonomousGameplayController {
     this.targetShootingPos = null;
     this.activeTrajectorySolution = null;
     this.recoveryContext = null;
+    this.consecutiveFailures = 0;
+    this.lastFailureCategory = FAILURE_CATEGORIES.NONE;
+    this.lastFailureReason = 'None';
+    this.currentRecoveryAction = 'NONE';
+    this.lastSuccessfulOperation = 'None';
+    this.targetSelectionStatus = 'DETECTED';
+    this.targetRejectionReason = 'NONE';
+    this.lastNavigationCommandTimestamp = null;
+    this.lastKnownBallPose = null;
     this.resetRetries();
 
     this.statistics = {
@@ -207,12 +275,14 @@ export class AutonomousGameplayController {
     };
     this._lastEvaluatedShotId = null;
     this._shotOutcomeRecorded = false;
+    this._navShootingStarted = false;
   }
 
   /**
    * Resets internal category retry counters.
    */
   resetRetries() {
+    this.retries.ballSearch = 0;
     this.retries.collection = 0;
     this.retries.navigation = 0;
     this.retries.alignment = 0;
@@ -251,21 +321,14 @@ export class AutonomousGameplayController {
   // =========================================================================
 
   /**
-   * Steps the autonomous state machine and decision logic every simulation frame.
-   * @param {number} dt Frame delta time in seconds
+   * Main autonomous execution step executed on every simulation frame.
+   * @param {number} dt Delta time in seconds
    */
-  update(dt) {
-    if (!this.stateMachine.isActive) {
-      return;
-    }
-
-    // Step state timer and session timer
+  update(dt = 0.016) {
+    if (!this.stateMachine.isActive) return;
     this.stateMachine.update(dt);
-    if (this.statistics.startTime) {
-      this.statistics.sessionDuration = (Date.now() - this.statistics.startTime) / 1000.0;
-    }
 
-    // Safety check: Emergency Stop engagement immediately aborts gameplay
+    // Safety interlock: Emergency Stop aborts autonomous control immediately
     if (this.robot && this.robot.driveController?.mode === 'E_STOP') {
       this.haltAllActuators();
       this.stateMachine.fail('Emergency Stop activated: autonomous gameplay terminated');
@@ -277,14 +340,34 @@ export class AutonomousGameplayController {
 
     switch (state) {
       // ---------------------------------------------------------------------
-      // 1. SEARCHING_FOR_BALL: Rotate to scan court until vision detects a ball
+      // 1. SEARCHING_FOR_BALL / RETURNING_TO_SEARCHING: Rotate to scan court for ball
       // ---------------------------------------------------------------------
-      case AUTONOMOUS_STATES.SEARCHING_FOR_BALL: {
-        // Query VisionManager for candidate basketball tracks
-        const target = this.decisionEngine.selectBestBasketballTarget(this.visionManager, this.robot);
+      case AUTONOMOUS_STATES.SEARCHING_FOR_BALL:
+      case AUTONOMOUS_STATES.RETURNING_TO_SEARCHING: {
+        // Query VisionManager for candidate basketball tracks (pass currentTarget for hysteresis)
+        const target = this.decisionEngine.selectBestBasketballTarget(this.visionManager, this.robot, this.currentTarget);
+        const diag = typeof this.decisionEngine.getTargetSelectionDiagnostics === 'function'
+          ? this.decisionEngine.getTargetSelectionDiagnostics()
+          : null;
+
         if (target) {
           this.robot.driveController.stop();
           this.currentTarget = target;
+          this.activeBallReference = target.track?.reference || this.activeBallReference || this.basketball;
+          this.lastKnownBallPose = {
+            x: target.worldPosition.x,
+            z: target.worldPosition.z,
+            distance: target.distance,
+            azimuthDeg: target.azimuthDeg,
+            timestamp: Date.now()
+          };
+          this.targetSelectionStatus = 'SELECTED';
+          this.targetRejectionReason = 'NONE';
+          this.retries.ballSearch = 0;
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'BALL_ACQUIRED';
+          this.logThrottled('TARGET_ACQUIRED', `Selected ball ${target.id} at ${target.distance.toFixed(1)}m (conf: ${target.confidence.toFixed(2)})`);
+
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.SELECTING_TARGET,
             `Basketball detected (${target.id} at ${target.distance.toFixed(1)}m). Locking target`
@@ -292,46 +375,80 @@ export class AutonomousGameplayController {
           return;
         }
 
-        // Rotate in place to conduct 360-degree camera sweep
-        this.setRobotDriveVelocities(0.0, this.config.searchRotateSpeed);
+        // Target not selected: update diagnostic status
+        if (diag && diag.candidateCount > 0) {
+          this.targetSelectionStatus = 'TARGET_REJECTED';
+          this.targetRejectionReason = diag.primaryRejectionReason;
+          this.logThrottled('TARGET_REJECTED', `Tracked ball rejected: ${diag.primaryRejectionReason}`);
+        } else {
+          const rawCount = this.visionManager?.latestRawBallDetections?.length ?? 0;
+          this.targetSelectionStatus = rawCount > 0 ? 'DETECTED' : 'SEARCHING';
+          this.targetRejectionReason = rawCount > 0 ? 'TRACKING_CONVERGENCE' : 'NO_BALL_DETECTED';
+        }
+
+        // Search strategy: if we recently saw a ball (< 4.0s), bias rotation toward its last known heading
+        let searchYawSpeed = this.config.searchRotateSpeed;
+        if (this.lastKnownBallPose && (Date.now() - this.lastKnownBallPose.timestamp < 4000)) {
+          const rPos = this.robot.getPosition();
+          const rHeading = this.robot.getHeading();
+          const dx = this.lastKnownBallPose.x - rPos.x;
+          const dz = this.lastKnownBallPose.z - rPos.z;
+          const targetHeading = Math.atan2(-dz, dx);
+          const headingErr = RobotKinematics.normalizeAngle(targetHeading - rHeading);
+          if (Math.abs(headingErr) > 0.15) {
+            searchYawSpeed = Math.sign(headingErr) * Math.min(Math.abs(headingErr) * 2.0, this.config.searchRotateSpeed);
+          }
+        }
+
+        // Rotate in place to conduct smooth camera sweep
+        this.setRobotDriveVelocities(0.0, searchYawSpeed);
 
         if (timeInState >= this.config.searchBallTimeout) {
           this.robot.driveController.stop();
-          this.triggerRecovery('BALL_LOST', 'Visual scan completed full 360° rotation without detecting basketball');
+          this.triggerRecovery(FAILURE_CATEGORIES.BALL_NOT_DETECTED, 'Visual scan completed 360° rotation without detecting collectible basketball');
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 2. SELECTING_TARGET: Lock approach coordinates and launch A* navigation
+      // 2. SELECTING_TARGET / TRACKING_BALL: Lock approach coordinates and plan A* path
       // ---------------------------------------------------------------------
-      case AUTONOMOUS_STATES.SELECTING_TARGET: {
-        const target = this.currentTarget || this.decisionEngine.selectBestBasketballTarget(this.visionManager, this.robot);
+      case AUTONOMOUS_STATES.SELECTING_TARGET:
+      case AUTONOMOUS_STATES.TRACKING_BALL: {
+        const target = this.decisionEngine.selectBestBasketballTarget(this.visionManager, this.robot, this.currentTarget) || this.currentTarget;
         if (!target) {
+          this.targetSelectionStatus = 'TARGET_REJECTED';
           this.stateMachine.transitionTo(AUTONOMOUS_STATES.SEARCHING_FOR_BALL, 'Target lost during selection: resuming visual search');
           return;
         }
 
         this.currentTarget = target;
+        this.activeBallReference = target.track?.reference || this.activeBallReference || this.basketball;
         const appPos = target.approachPosition;
+
+        this.targetSelectionStatus = 'NAVIGATION_REQUESTED';
+        this.lastNavigationCommandTimestamp = Date.now();
 
         // Command autonomous A* navigation to approach waypoint
         const navSuccess = this.robot.startAutonomousNavigation(appPos.x, appPos.z);
         if (navSuccess) {
+          this.targetSelectionStatus = 'NAVIGATING';
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.NAVIGATING_TO_BALL,
             `Navigating to ball ${target.id} at (${appPos.x.toFixed(1)}, ${appPos.z.toFixed(1)})`
           );
         } else {
-          this.triggerRecovery('NAV_BLOCKED', `Failed to plan navigable path to ball approach (${appPos.x.toFixed(1)}, ${appPos.z.toFixed(1)})`);
+          this.targetSelectionStatus = 'REPLANNING';
+          this.triggerRecovery(FAILURE_CATEGORIES.PATH_BLOCKED, `Failed to plan navigable path to ball approach (${appPos.x.toFixed(1)}, ${appPos.z.toFixed(1)})`);
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 3. NAVIGATING_TO_BALL: Track waypoint progress and detect ball proximity
+      // 3. NAVIGATING_TO_BALL / APPROACHING_BALL: Track waypoint progress
       // ---------------------------------------------------------------------
-      case AUTONOMOUS_STATES.NAVIGATING_TO_BALL: {
+      case AUTONOMOUS_STATES.NAVIGATING_TO_BALL:
+      case AUTONOMOUS_STATES.APPROACHING_BALL: {
         const navState = this.robot.navController?.state;
         const robotPos = this.robot.getPosition();
         const targetPos = this.currentTarget?.worldPosition;
@@ -340,77 +457,130 @@ export class AutonomousGameplayController {
           ? Math.hypot(targetPos.x - robotPos.x, targetPos.z - robotPos.z)
           : 999;
 
-        // Proximity trigger: If robot arrives within ballCaptureDistance, transition to intake collection
+        // Proximity arrival: Once within capture zone, align chassis for intake scoop
         if (distToBall <= this.config.ballCaptureDistance || navState === 'GOAL_REACHED') {
-          this.robot.navController.cancel();
+          this.targetSelectionStatus = 'ARRIVED';
+          this.robot.navController?.cancel('Arrived at collection area');
+          this.robot.driveController.stop();
           this.retries.navigation = 0;
-          this.robot.startIntake();
-          this.stateMachine.transitionTo(
-            AUTONOMOUS_STATES.COLLECTING_BALL,
-            `Within capture zone (${distToBall.toFixed(2)}m). Engaging front intake rollers`
-          );
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'APPROACH_COMPLETED';
+
+          const robotHeading = this.robot.getHeading();
+          let headingErr = 0.0;
+          if (targetPos) {
+            const dx = targetPos.x - robotPos.x;
+            const dz = targetPos.z - robotPos.z;
+            const angleToBall = Math.atan2(-dz, dx);
+            headingErr = RobotKinematics.normalizeAngle(angleToBall - robotHeading);
+          }
+
+          if (Math.abs(headingErr) > 0.20) {
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.ALIGNING_FOR_INTAKE,
+              `Within capture zone (${distToBall.toFixed(2)}m). Aligning chassis heading for intake`
+            );
+          } else {
+            this.robot.startIntake();
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.COLLECTING_BALL,
+              `Within capture zone (${distToBall.toFixed(2)}m) and aligned. Engaging intake rollers for collection`
+            );
+          }
           return;
         }
 
         // Navigation failure handling
         if (navState === 'BLOCKED') {
-          this.triggerRecovery('NAV_BLOCKED', 'Path to target basketball is blocked by obstacle');
+          this.targetSelectionStatus = 'REPLANNING';
+          this.triggerRecovery(FAILURE_CATEGORIES.PATH_BLOCKED, 'Path to target basketball is blocked by obstacle');
           return;
         }
 
         // Timeout fallback for ball navigation
         if (timeInState >= 15.0) {
           if (distToBall <= 1.2) {
-            this.robot.navController.cancel();
-            this.robot.startIntake();
+            this.robot.navController?.cancel('Navigation timeout near ball: proceeding to intake');
             this.stateMachine.transitionTo(
-              AUTONOMOUS_STATES.COLLECTING_BALL,
-              `Navigation timed out near ball (${distToBall.toFixed(2)}m). Switching to collection crawl`
+              AUTONOMOUS_STATES.ALIGNING_FOR_INTAKE,
+              `Navigation timed out near ball (${distToBall.toFixed(2)}m). Aligning for collection crawl`
             );
             return;
           }
-          this.robot.navController.cancel();
-          this.triggerRecovery('NAV_BLOCKED', `Navigation to ball timed out after ${timeInState.toFixed(1)}s`);
+          this.robot.navController?.cancel('Navigation timeout exceeded');
+          this.triggerRecovery(FAILURE_CATEGORIES.NAVIGATION_TIMEOUT, `Navigation to ball timed out after ${timeInState.toFixed(1)}s`);
           return;
         }
 
-        // Target tracking verification: Check if vision target departed significantly
+        this.targetSelectionStatus = 'NAVIGATING';
+
+        // Dynamic re-planning: if target ball moved significantly (> 0.6m), update path to new approach waypoint
         const currentObs = this.visionManager?.getSelectedBasketball();
-        if (currentObs && currentObs.id === this.currentTarget.id && targetPos) {
-          const shift = Math.hypot(currentObs.worldPosition.x - targetPos.x, currentObs.worldPosition.z - targetPos.z);
-          // If the ball moved more than 0.6m (e.g. rolled away), dynamically re-plan
-          if (shift > 0.6) {
-            this.currentTarget.worldPosition = { ...currentObs.worldPosition };
-            this.robot.startAutonomousNavigation(currentObs.worldPosition.x, currentObs.worldPosition.z);
+        if (currentObs && targetPos) {
+          const isSameTarget = (currentObs.id === this.currentTarget.id) ||
+                               (currentObs.instanceId && this.currentTarget.track?.instanceId && currentObs.instanceId === this.currentTarget.track.instanceId);
+          if (isSameTarget) {
+            const shift = Math.hypot(currentObs.worldPosition.x - targetPos.x, currentObs.worldPosition.z - targetPos.z);
+            if (shift > 0.6) {
+              this.currentTarget.worldPosition = { ...currentObs.worldPosition };
+              const newAppPos = this.decisionEngine.calculateApproachPosition(currentObs.worldPosition, robotPos);
+              this.currentTarget.approachPosition = newAppPos;
+              this.robot.startAutonomousNavigation(newAppPos.x, newAppPos.z);
+              this.lastNavigationCommandTimestamp = Date.now();
+              this.logThrottled('DYNAMIC_REPLAN', `Target ball shifted by ${shift.toFixed(2)}m. Replanned approach to (${newAppPos.x.toFixed(1)}, ${newAppPos.z.toFixed(1)})`);
+            }
           }
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 4. COLLECTING_BALL: Crawl forward with intake rollers until possession confirmed
+      // 4. ALIGNING_FOR_INTAKE: Direct front scoop toward ball before intaking
+      // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.ALIGNING_FOR_INTAKE: {
+        const robotPos = this.robot.getPosition();
+        const robotHeading = this.robot.getHeading();
+        const targetPos = this.currentTarget?.worldPosition;
+
+        let headingErr = 0.0;
+        if (targetPos) {
+          const dx = targetPos.x - robotPos.x;
+          const dz = targetPos.z - robotPos.z;
+          const angleToBall = Math.atan2(-dz, dx);
+          headingErr = RobotKinematics.normalizeAngle(angleToBall - robotHeading);
+        }
+
+        // Rotate in place until aligned within ~0.15 rad (8.5 degrees)
+        if (Math.abs(headingErr) > 0.15 && timeInState < 1.2) {
+          const yawCmd = Math.max(-1.5, Math.min(1.5, headingErr * 3.0));
+          this.setRobotDriveVelocities(0.0, yawCmd);
+        } else {
+          this.robot.driveController.stop();
+          this.robot.startIntake();
+          this.stateMachine.transitionTo(
+            AUTONOMOUS_STATES.COLLECTING_BALL,
+            'Aligned with ball. Engaging intake rollers and commencing collection crawl'
+          );
+        }
+        break;
+      }
+
+      // ---------------------------------------------------------------------
+      // 5. COLLECTING_BALL: Crawl forward with intake rollers until possession confirmed
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.COLLECTING_BALL: {
         const possession = this.decisionEngine.evaluatePossession(this.robot);
 
-        // Possession confirmation: optical sensor active or ball captured in cradle
         if (possession.hasBall) {
           this.robot.driveController.stop();
           this.robot.stopIntake();
-          this.retries.collection = 0; // Reset collection retry counter
-          // Keep current target or associate captured ball so HUD shows possessed ball
-          if (!this.currentTarget && this.robot.intake?.capturedBall) {
-            this.currentTarget = {
-              id: this.robot.intake.capturedBall.id,
-              distance: 0.0,
-              confidence: 1.0,
-              worldPosition: this.robot.getPosition()
-            };
-          }
+          this.retries.collection = 0;
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'BALL_COLLECTED';
 
           this.stateMachine.transitionTo(
-            AUTONOMOUS_STATES.SEARCHING_FOR_HOOP,
-            'Ball captured securely in containment cradle. Locating basket hoop'
+            AUTONOMOUS_STATES.VERIFYING_POSSESSION,
+            'Ball entry detected in intake scoop. Verifying cradle possession'
           );
           return;
         }
@@ -432,34 +602,99 @@ export class AutonomousGameplayController {
         if (timeInState >= this.config.collectionTimeout) {
           this.robot.driveController.stop();
           this.robot.stopIntake();
-          this.triggerRecovery('COLLECTION_FAILED', `Collection timed out after ${timeInState.toFixed(1)}s without ball capture`);
+          this.triggerRecovery(FAILURE_CATEGORIES.INTAKE_FAILED, `Collection timed out after ${timeInState.toFixed(1)}s without ball capture`);
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 5. SEARCHING_FOR_HOOP: Scan for regulation basketball hoop via vision
+      // 6 & 7. VERIFYING_POSSESSION / SELECTING_SHOT / SEARCHING_FOR_HOOP
       // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.VERIFYING_POSSESSION:
+      case AUTONOMOUS_STATES.SELECTING_SHOT:
       case AUTONOMOUS_STATES.SEARCHING_FOR_HOOP: {
-        const hoopObs = this.visionManager?.getHoopObservation();
+        this.robot.driveController.stop();
+        this.robot.stopIntake();
 
+        const possession = this.decisionEngine.evaluatePossession(this.robot);
+        if (possession.hasBall) {
+          if (!this.currentTarget && this.robot.intake?.capturedBall) {
+            this.currentTarget = {
+              id: this.robot.intake.capturedBall.id,
+              distance: 0.0,
+              confidence: 1.0,
+              worldPosition: this.robot.getPosition()
+            };
+          }
+          this.activeBallReference = this.robot.intake?.capturedBall || this.activeBallReference || this.basketball;
+          this.lastSuccessfulOperation = 'POSSESSION_VERIFIED';
+        } else if (timeInState >= 0.8) {
+          this.triggerRecovery(FAILURE_CATEGORIES.POSSESSION_VERIFICATION_FAILED, 'Ball not confirmed in containment cradle');
+          return;
+        }
+
+        const hoopObs = this.visionManager?.getHoopObservation();
         if (hoopObs && hoopObs.visible && hoopObs.confidence >= this.config.minHoopConfidence) {
-          this.robot.driveController.stop();
+          const hoopTarget = hoopObs.targetRimPosition || { x: 12.425, y: 3.05, z: 0.0 };
+
+          // Evaluate whether a feasible shot can be taken directly from current position!
+          const feasibility = this.decisionEngine.evaluateShootingFeasibility(
+            this.robot,
+            this.robot.trajectoryCalculator,
+            hoopTarget
+          );
+
+          if (feasibility.isFeasible && feasibility.solution) {
+            // SHOOT DIRECTLY FROM CURRENT LOCATION! No unnecessary navigation!
+            this.activeTrajectorySolution = feasibility.solution;
+            this.targetShootingPos = {
+              x: this.robot.getPosition().x,
+              z: this.robot.getPosition().z,
+              hoopTarget,
+              targetDistance: feasibility.solution.targetDistance
+            };
+
+            this.consecutiveFailures = 0;
+            this.lastSuccessfulOperation = 'DYNAMIC_SHOT_SELECTED';
+
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
+              `Feasible shot from current position (${feasibility.reason}). Aligning shooter toward hoop`
+            );
+            return;
+          }
+
+          // Current location is infeasible (e.g. too far downcourt, out of bounds, or behind backboard)
+          // Adjust position dynamically to a nearby feasible shooting position
+          const fallbackPos = feasibility.candidatePosition || { x: 8.2, z: 0.0 };
+          this.targetShootingPos = {
+            x: fallbackPos.x,
+            z: fallbackPos.z,
+            hoopTarget,
+            targetDistance: Math.hypot(hoopTarget.x - fallbackPos.x, hoopTarget.z - fallbackPos.z)
+          };
           this._navShootingStarted = false;
+
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION,
-            `Hoop detected by camera (range: ${hoopObs.distance.toFixed(1)}m, conf: ${(hoopObs.confidence * 100).toFixed(0)}%). Navigating to key`
+            `Position infeasible (${feasibility.reason}). Navigating to optimal shooting spot (${fallbackPos.x.toFixed(1)}, ${fallbackPos.z.toFixed(1)})`
           );
           return;
         }
 
-        // Rotate in place toward East hoop direction (+X baseline)
+        // Rotate toward East baseline hoop direction (+X baseline)
         this.setRobotDriveVelocities(0.0, this.config.searchRotateSpeed);
 
         if (timeInState >= this.config.searchHoopTimeout) {
           this.robot.driveController.stop();
           this._navShootingStarted = false;
-          // Fall back to default free-throw line key coordinates
+          const fallbackPos = { x: 8.2, z: 0.0 };
+          this.targetShootingPos = {
+            x: fallbackPos.x,
+            z: fallbackPos.z,
+            hoopTarget: { x: 12.425, y: 3.05, z: 0.0 },
+            targetDistance: 4.225
+          };
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION,
             'Hoop search timed out: driving to default Free-Throw Key position'
@@ -469,15 +704,15 @@ export class AutonomousGameplayController {
       }
 
       // ---------------------------------------------------------------------
-      // 6. NAVIGATING_TO_SHOOTING_POSITION: Drive to optimal shooting key
+      // 8. POSITIONING_FOR_SHOT_IF_NEEDED / NAVIGATING_TO_SHOOTING_POSITION
       // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.POSITIONING_FOR_SHOT_IF_NEEDED:
       case AUTONOMOUS_STATES.NAVIGATING_TO_SHOOTING_POSITION: {
-        // Initialize navigation on first entry
         if (!this._navShootingStarted) {
           this._navShootingStarted = true;
-          const hoopObs = this.visionManager?.getHoopObservation();
-          this.targetShootingPos = this.decisionEngine.calculateShootingPosition(hoopObs, this.robot);
-          this.robot.startAutonomousNavigation(this.targetShootingPos.x, this.targetShootingPos.z);
+          const targetX = this.targetShootingPos?.x ?? 8.2;
+          const targetZ = this.targetShootingPos?.z ?? 0.0;
+          this.robot.startAutonomousNavigation(targetX, targetZ);
         }
 
         const navState = this.robot.navController?.state;
@@ -491,6 +726,9 @@ export class AutonomousGameplayController {
           this.robot.navController.cancel();
           this.robot.driveController.stop();
           this.retries.navigation = 0;
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'POSITIONING_COMPLETED';
+
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
             `Arrived at shooting position (${this.targetShootingPos.x.toFixed(1)}, ${this.targetShootingPos.z.toFixed(1)}). Aligning with basket`
@@ -499,21 +737,21 @@ export class AutonomousGameplayController {
         }
 
         if (navState === 'BLOCKED') {
-          // If blocked but already within shooting range (3.5m to 7.0m from hoop), shoot from current location!
+          // If blocked but within broad range (3.0m - 7.5m), attempt to shoot from current spot
           const hoopX = this.targetShootingPos?.hoopTarget?.x || 12.425;
           const distToHoop = Math.hypot(hoopX - robotPos.x, -robotPos.z);
-          if (distToHoop >= 3.5 && distToHoop <= 7.0) {
+          if (distToHoop >= 2.5 && distToHoop <= 8.5 && robotPos.x <= 11.2) {
             this._navShootingStarted = false;
             this.robot.navController.cancel();
             this.robot.driveController.stop();
             this.stateMachine.transitionTo(
               AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
-              `Navigation blocked but within range (${distToHoop.toFixed(1)}m): proceeding to align from current position`
+              `Navigation blocked but in shooting range (${distToHoop.toFixed(1)}m): proceeding to align`
             );
             return;
           }
           this._navShootingStarted = false;
-          this.triggerRecovery('NAV_BLOCKED', 'Path to shooting key is obstructed');
+          this.triggerRecovery(FAILURE_CATEGORIES.PATH_BLOCKED, 'Path to shooting position is obstructed');
           return;
         }
 
@@ -523,20 +761,20 @@ export class AutonomousGameplayController {
           this.robot.driveController.stop();
           const hoopX = this.targetShootingPos?.hoopTarget?.x || 12.425;
           const distToHoop = Math.hypot(hoopX - robotPos.x, -robotPos.z);
-          if (distToHoop >= 3.0 && distToHoop <= 7.5) {
+          if (distToHoop >= 2.5 && distToHoop <= 8.5 && robotPos.x <= 11.2) {
             this.stateMachine.transitionTo(
               AUTONOMOUS_STATES.ALIGNING_WITH_HOOP,
               `Navigation timed out but in shooting range (${distToHoop.toFixed(1)}m): proceeding to align`
             );
             return;
           }
-          this.triggerRecovery('NAV_BLOCKED', `Navigation to shooting position timed out after ${timeInState.toFixed(1)}s`);
+          this.triggerRecovery(FAILURE_CATEGORIES.NAVIGATION_TIMEOUT, `Navigation to shooting position timed out after ${timeInState.toFixed(1)}s`);
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 7. ALIGNING_WITH_HOOP: Precision heading hold PID alignment toward rim
+      // 9. ALIGNING_WITH_HOOP: Direction-independent precision heading alignment
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.ALIGNING_WITH_HOOP: {
         const hoopObs = this.visionManager?.getHoopObservation();
@@ -566,8 +804,11 @@ export class AutonomousGameplayController {
         if ((withinTol && settled) || (timeInState > 2.0 && Math.abs(headingError) <= 0.08 && angSpeed < 0.3)) {
           this.robot.driveController.stop();
           this.retries.alignment = 0;
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'HEADING_ALIGNED';
+
           this.stateMachine.transitionTo(
-            AUTONOMOUS_STATES.OPTIMIZING_TRAJECTORY,
+            AUTONOMOUS_STATES.CALCULATING_SHOT,
             `Aligned with basket (error: ${(Math.abs(headingError) * 180 / Math.PI).toFixed(1)}°). Calculating ballistic trajectory`
           );
           return;
@@ -581,22 +822,23 @@ export class AutonomousGameplayController {
       }
 
       // ---------------------------------------------------------------------
-      // 8. OPTIMIZING_TRAJECTORY: Ballistic solver + adaptive feedback calibration
+      // 10. CALCULATING_SHOT / OPTIMIZING_TRAJECTORY: Ballistic solver + adaptive feedback
       // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.CALCULATING_SHOT:
       case AUTONOMOUS_STATES.OPTIMIZING_TRAJECTORY: {
         const muzzlePos = this.getMuzzlePosition();
         const hoopTarget = this.targetShootingPos?.hoopTarget || { x: 12.425, y: 3.05, z: 0.0 };
 
         const opt = this.robot.trajectoryCalculator.optimizeTrajectory(muzzlePos, hoopTarget, {
-          minAngleDeg: 50.0,
-          maxAngleDeg: 66.0,
+          minAngleDeg: 46.0,
+          maxAngleDeg: 68.0,
           angleStepDeg: 1.0,
-          minEntryAngleDeg: 34.0,
-          maxApexHeight: 6.8
+          minEntryAngleDeg: 32.0,
+          maxApexHeight: 7.2
         });
 
         if (!opt.valid || !opt.solution) {
-          this.triggerRecovery('TRAJECTORY_INVALID', opt.message || 'No physically valid trajectory found');
+          this.triggerRecovery(FAILURE_CATEGORIES.SHOT_SOLUTION_UNAVAILABLE, opt.message || 'No physically valid trajectory found');
           return;
         }
 
@@ -618,17 +860,17 @@ export class AutonomousGameplayController {
 
         this.stateMachine.transitionTo(
           AUTONOMOUS_STATES.SPINNING_UP_FLYWHEELS,
-          `Trajectory optimal: ${this.activeTrajectorySolution.launchAngleDeg.toFixed(1)}° at ${this.activeTrajectorySolution.speed.toFixed(2)} m/s. Accelerating flywheels`
+          `Trajectory calculated: ${this.activeTrajectorySolution.launchAngleDeg.toFixed(1)}° at ${this.activeTrajectorySolution.speed.toFixed(2)} m/s. Accelerating flywheels`
         );
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 9. SPINNING_UP_FLYWHEELS: Accelerate dual flywheels to target speed
+      // 11. SPINNING_UP_FLYWHEELS: Accelerate dual flywheels to target speed
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.SPINNING_UP_FLYWHEELS: {
         if (!this.activeTrajectorySolution) {
-          this.stateMachine.transitionTo(AUTONOMOUS_STATES.OPTIMIZING_TRAJECTORY, 'Trajectory missing: re-optimizing');
+          this.stateMachine.transitionTo(AUTONOMOUS_STATES.CALCULATING_SHOT, 'Trajectory missing: recalculating');
           return;
         }
 
@@ -639,8 +881,11 @@ export class AutonomousGameplayController {
           const interlocks = this.decisionEngine.evaluateShootingInterlocks(this.robot, this.visionManager?.getHoopObservation());
           if (interlocks.isReady) {
             this.retries.spinUp = 0;
+            this.consecutiveFailures = 0;
+            this.lastSuccessfulOperation = 'FLYWHEELS_READY';
+
             this.stateMachine.transitionTo(
-              AUTONOMOUS_STATES.SHOOTING,
+              AUTONOMOUS_STATES.EXECUTING_SHOT,
               'Flywheels at operational RPM. All interlocks verified. Executing shot'
             );
           } else {
@@ -651,114 +896,106 @@ export class AutonomousGameplayController {
 
         if (timeInState >= this.config.spinUpTimeout) {
           this.robot.shooter?.cancel();
-          this.triggerRecovery('SPINUP_TIMEOUT', `Flywheel spin-up timed out after ${timeInState.toFixed(1)}s`);
+          this.triggerRecovery(FAILURE_CATEGORIES.SHOOTING_EXECUTION_FAILED, `Flywheel spin-up timed out after ${timeInState.toFixed(1)}s`);
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 10. SHOOTING: Fire basketball into Rapier 3D ballistic trajectory
+      // 12. EXECUTING_SHOT / SHOOTING: Fire basketball into Rapier 3D physics
       // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.EXECUTING_SHOT:
       case AUTONOMOUS_STATES.SHOOTING: {
         const hoopTarget = this.targetShootingPos?.hoopTarget || { x: 12.425, y: 3.05, z: 0.0 };
 
+        const ballToShoot = (this.robot.intake && this.robot.intake.capturedBall)
+          ? this.robot.intake.capturedBall
+          : (this.activeBallReference || this.basketball);
+
         const shotInfo = {
           id: Date.now(),
+          ball: ballToShoot,
           distance: this.activeTrajectorySolution ? this.activeTrajectorySolution.targetDistance : 4.225,
           launchSpeed: this.activeTrajectorySolution ? this.activeTrajectorySolution.speed : 8.5,
           launchAngleDeg: this.activeTrajectorySolution ? this.activeTrajectorySolution.launchAngleDeg : 52.0
         };
 
-        const fired = this.robot.fireShot(this.basketball, this.hoopDetector, hoopTarget);
+        const fired = this.robot.fireShot(ballToShoot, this.hoopDetector, hoopTarget);
 
         if (fired) {
           this.statistics.totalAttempts++;
           this._shotOutcomeRecorded = false;
           this._lastEvaluatedShotId = shotInfo.id;
+          this.activeBallReference = ballToShoot;
+          this.consecutiveFailures = 0;
+          this.lastSuccessfulOperation = 'SHOT_LAUNCHED';
 
           this.stateMachine.transitionTo(
-            AUTONOMOUS_STATES.EVALUATING_SHOT,
-            `Shot #${this.statistics.totalAttempts} launched into ballistic flight. Evaluating scoring trajectory`
+            AUTONOMOUS_STATES.TRACKING_SHOT,
+            `Shot #${this.statistics.totalAttempts} launched into ballistic flight. Tracking shot trajectory`
           );
         } else {
-          this.triggerRecovery('SHOT_REJECTED', `Shooter rejected launch: ${this.robot.shooter?.lastRejectReason || 'interlock violation'}`);
+          this.triggerRecovery(FAILURE_CATEGORIES.SHOOTING_EXECUTION_FAILED, `Shooter rejected launch: ${this.robot.shooter?.lastRejectReason || 'interlock violation'}`);
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 11. EVALUATING_SHOT: Wait for physical scoring resolution from HoopDetector
+      // 13. TRACKING_SHOT / WAITING_FOR_BALL_TO_LAND / EVALUATING_SHOT
       // ---------------------------------------------------------------------
+      case AUTONOMOUS_STATES.TRACKING_SHOT:
+      case AUTONOMOUS_STATES.WAITING_FOR_BALL_TO_LAND:
       case AUTONOMOUS_STATES.EVALUATING_SHOT: {
         const shotStats = this.hoopDetector?.stats;
         const lastResult = shotStats?.lastShotResult; // 'SCORED', 'MISSED', 'IN_FLIGHT'
 
-        if (lastResult === 'SCORED') {
-          if (!this._shotOutcomeRecorded) {
-            this._shotOutcomeRecorded = true;
+        // Record shot score/miss exactly once
+        if ((lastResult === 'SCORED' || lastResult === 'MISSED' || (shotStats?.lastDetailedResult && shotStats.lastDetailedResult.startsWith('MISSED_'))) && !this._shotOutcomeRecorded) {
+          this._shotOutcomeRecorded = true;
+          if (lastResult === 'SCORED') {
             this.statistics.successfulShots++;
-            this.updateAccuracy();
+            this.lastSuccessfulOperation = 'BASKET_SCORED';
+          } else {
+            this.statistics.missedShots++;
+          }
+          this.updateAccuracy();
 
-            // Inform adaptive corrector of scored outcome so decay damping is applied
-            const details = this.hoopDetector?.lastShotDetails;
-            const corrector = this.robot.adaptiveCorrector || this.robot.adaptiveShotCorrector;
-            if (details && corrector) {
-              if (typeof corrector.recordShotOutcome === 'function') {
-                corrector.recordShotOutcome(details);
-              } else if (typeof corrector.recordOutcome === 'function') {
-                corrector.recordOutcome(details);
-              }
+          const details = this.hoopDetector?.lastShotDetails;
+          const corrector = this.robot.adaptiveCorrector || this.robot.adaptiveShotCorrector;
+          if (details && corrector) {
+            if (typeof corrector.recordShotOutcome === 'function') {
+              corrector.recordShotOutcome(details);
+            } else if (typeof corrector.recordOutcome === 'function') {
+              corrector.recordOutcome(details);
             }
           }
 
-          // Check mission completion for FIXED_TARGET mode
-          const completion = this.decisionEngine.evaluateMissionCompletion(
-            this.mode,
-            this.statistics.successfulShots,
-            this.targetShots
-          );
-
-          if (completion.isCompleted) {
-            this.haltAllActuators();
-            this.stateMachine.complete(
-              `Target achieved: ${this.statistics.successfulShots} successful baskets scored (${this.statistics.totalAttempts} attempts, ${this.statistics.accuracyPercent.toFixed(1)}% accuracy)!`
+          // Mission completion check for FIXED_TARGET mode
+          if (this.mode === GAMEPLAY_MODES.FIXED_TARGET) {
+            const completion = this.decisionEngine.evaluateMissionCompletion(
+              this.mode,
+              this.statistics.successfulShots,
+              this.targetShots
             );
-          } else {
-            const remMsg = this.mode === GAMEPLAY_MODES.FIXED_TARGET ? ` (${completion.remainingShots} remaining)` : '';
-            this.stateMachine.transitionTo(
-              AUTONOMOUS_STATES.REACQUIRING_BALL,
-              `BASKET SCORED! Total: ${this.statistics.successfulShots}${remMsg}. Reacquiring basketball`
-            );
-          }
-          return;
-        }
-
-        if (lastResult === 'MISSED' || (shotStats?.lastDetailedResult && shotStats.lastDetailedResult.startsWith('MISSED_'))) {
-          if (!this._shotOutcomeRecorded) {
-            this._shotOutcomeRecorded = true;
-            this.statistics.missedShots++;
-            this.updateAccuracy();
-
-            // Inform adaptive corrector with detailed miss outcome
-            const details = this.hoopDetector?.lastShotDetails;
-            const corrector = this.robot.adaptiveCorrector || this.robot.adaptiveShotCorrector;
-            if (details && corrector) {
-              if (typeof corrector.recordShotOutcome === 'function') {
-                corrector.recordShotOutcome(details);
-              } else if (typeof corrector.recordOutcome === 'function') {
-                corrector.recordOutcome(details);
-              }
+            if (completion.isCompleted) {
+              this.haltAllActuators();
+              this.stateMachine.complete(
+                `Target achieved: ${this.statistics.successfulShots} successful baskets scored (${this.statistics.totalAttempts} attempts, ${this.statistics.accuracyPercent.toFixed(1)}% accuracy)!`
+              );
+              return;
             }
           }
 
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.REACQUIRING_BALL,
-            `Shot missed (${shotStats?.lastDetailedResult || 'MISSED'}). Adaptive bias calibrated. Reacquiring ball`
+            lastResult === 'SCORED'
+              ? `BASKET SCORED! Total: ${this.statistics.successfulShots}. Reacquiring basketball`
+              : `Shot missed (${shotStats?.lastDetailedResult || 'MISSED'}). Adaptive bias calibrated. Reacquiring ball`
           );
           return;
         }
 
-        // Timeout fallback if ball did not trigger resolution within shotEvaluationTimeout
+        // Timeout fallback if ball did not resolve within shotEvaluationTimeout
         if (timeInState >= this.config.shotEvaluationTimeout) {
           if (!this._shotOutcomeRecorded) {
             this._shotOutcomeRecorded = true;
@@ -767,34 +1004,49 @@ export class AutonomousGameplayController {
           }
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.REACQUIRING_BALL,
-            'Shot trajectory evaluation timed out: registering attempt and continuing'
+            'Shot evaluation timed out. Reacquiring ball'
           );
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 12. REACQUIRING_BALL: Cooldown and transition to search for next ball
+      // 14. REACQUIRING_BALL / RETURNING_TO_SEARCHING: Continuous loop reacquisition
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.REACQUIRING_BALL: {
         this.robot.stopIntake();
         if (this.robot.shooter) this.robot.shooter.cancel();
 
-        if (timeInState >= this.config.reacquireCooldown) {
+        if (timeInState >= (this.config.reacquireCooldown || 1.0)) {
+          // Check if the landed basketball is immediately visible to camera
+          const target = this.decisionEngine.selectBestBasketballTarget(this.visionManager, this.robot);
+          if (target) {
+            this.currentTarget = target;
+            this.activeBallReference = target.track?.reference || this.activeBallReference || this.basketball;
+            this.consecutiveFailures = 0;
+            this.lastSuccessfulOperation = 'BALL_REACQUIRED';
+
+            this.stateMachine.transitionTo(
+              AUTONOMOUS_STATES.SELECTING_TARGET,
+              `Reacquired basketball (${target.id} at ${target.distance.toFixed(1)}m). Preparing approach`
+            );
+            return;
+          }
+
           this.currentTarget = null;
           this.targetShootingPos = null;
           this.activeTrajectorySolution = null;
 
           this.stateMachine.transitionTo(
             AUTONOMOUS_STATES.SEARCHING_FOR_BALL,
-            'Ready for next attempt: initiating visual basketball search'
+            'Continuous gameplay: scanning court to reacquire basketball'
           );
         }
         break;
       }
 
       // ---------------------------------------------------------------------
-      // 13. RECOVERING: Execute recovery maneuver (e.g. back up, replan, scan)
+      // RECOVERING: Non-fatal failure recovery maneuver
       // ---------------------------------------------------------------------
       case AUTONOMOUS_STATES.RECOVERING: {
         if (!this.recoveryContext) {
@@ -815,6 +1067,15 @@ export class AutonomousGameplayController {
         } else if (action === 'REPLAN_NAVIGATION') {
           if (timeInState >= 0.5) {
             this.stateMachine.transitionTo(AUTONOMOUS_STATES.SELECTING_TARGET, 'Replanning navigable path to target');
+          }
+        } else if (action === 'REPOSITION_CENTER_VIEW') {
+          // Drive toward center court (0, 0) for broad full-court survey
+          if (timeInState < 1.5) {
+            this.robot.startAutonomousNavigation(0.0, 0.0);
+          } else {
+            this.robot.driveController.stop();
+            this.retries.ballSearch = 0;
+            this.stateMachine.transitionTo(AUTONOMOUS_STATES.SEARCHING_FOR_BALL, 'Repositioned: resuming visual sweep');
           }
         } else {
           // General recovery wait
@@ -837,14 +1098,18 @@ export class AutonomousGameplayController {
    * @param {string} reason Diagnostic code
    * @param {string} details Human-readable explanation
    */
-  triggerRecovery(reason, details) {
+  triggerRecovery(reason, details = '') {
     this.statistics.recoveryAttempts++;
+    this.consecutiveFailures++;
+
+    this.lastFailureCategory = reason;
+    this.lastFailureReason = details || reason;
 
     let categoryRetries = 0;
-    if (reason === 'COLLECTION_FAILED' || reason === 'INTAKE_TIMEOUT') {
+    if (reason === 'COLLECTION_FAILED' || reason === 'INTAKE_TIMEOUT' || reason === FAILURE_CATEGORIES.INTAKE_FAILED) {
       this.retries.collection++;
       categoryRetries = this.retries.collection;
-    } else if (reason === 'NAV_BLOCKED' || reason === 'PATH_PLANNING_FAILED') {
+    } else if (reason === 'NAV_BLOCKED' || reason === 'PATH_PLANNING_FAILED' || reason === FAILURE_CATEGORIES.PATH_BLOCKED) {
       this.retries.navigation++;
       categoryRetries = this.retries.navigation;
     } else if (reason === 'ALIGNMENT_TIMEOUT') {
@@ -853,16 +1118,22 @@ export class AutonomousGameplayController {
     } else if (reason === 'SPINUP_TIMEOUT') {
       this.retries.spinUp++;
       categoryRetries = this.retries.spinUp;
+    } else if (reason === 'BALL_NOT_DETECTED' || reason === 'BALL_LOST' || reason === FAILURE_CATEGORIES.BALL_NOT_DETECTED) {
+      this.retries.ballSearch++;
+      categoryRetries = this.retries.ballSearch;
     } else {
       categoryRetries = 1;
     }
 
     const decision = this.decisionEngine.evaluateRecoveryAction(reason, {
       retries: categoryRetries,
-      totalRecoveries: this.statistics.recoveryAttempts
+      consecutiveFailures: this.consecutiveFailures,
+      totalRecoveries: this.mode === GAMEPLAY_MODES.FIXED_TARGET ? this.statistics.recoveryAttempts : undefined,
+      message: details
     });
 
     this.recoveryContext = decision;
+    this.currentRecoveryAction = decision.action;
 
     if (decision.nextState === AUTONOMOUS_STATES.FAILED) {
       this.haltAllActuators();
@@ -921,42 +1192,87 @@ export class AutonomousGameplayController {
   // =========================================================================
 
   /**
-   * Returns complete status and telemetry snapshot for HUD and monitoring.
+   * Diagnostic telemetry providing deep visibility into the perception-to-action pipeline.
+   * Explains exactly why the robot is moving or stationary (Phase 3 requirements).
+   * @returns {Object}
+   */
+  getDiagnostics() {
+    const rPos = this.robot ? this.robot.getPosition() : { x: 0, y: 0, z: 0 };
+    const rPose = this.robot && typeof this.robot.getPose === 'function'
+      ? this.robot.getPose()
+      : { x: rPos.x, z: rPos.z, heading: this.robot?.getHeading ? this.robot.getHeading() : 0 };
+    const navTele = this.robot?.navController?.getTelemetry ? this.robot.navController.getTelemetry(rPose) : null;
+    const trackedTrack = this.visionManager?.getSelectedBasketball ? this.visionManager.getSelectedBasketball() : null;
+    const rawBallsCount = this.visionManager?.latestRawBallDetections?.length ?? 0;
+    const targetDiag = this.decisionEngine?.getTargetSelectionDiagnostics ? this.decisionEngine.getTargetSelectionDiagnostics() : null;
+
+    const ballPos = this.currentTarget?.worldPosition || trackedTrack?.worldPosition || null;
+    const ballConf = this.currentTarget?.confidence ?? trackedTrack?.confidence ?? null;
+    const ballAge = trackedTrack?.detectionAge ?? trackedTrack?.timeSinceLastSeen ?? 0;
+
+    return {
+      detectedBalls: rawBallsCount,
+      trackedBallId: trackedTrack ? trackedTrack.id : null,
+      ballTrackingConfidence: ballConf,
+      ballDetectionAge: ballAge,
+      ballWorldPosition: ballPos ? { ...ballPos } : null,
+      robotWorldPosition: { x: Number(rPos.x.toFixed(2)), y: Number(rPos.y.toFixed(2)), z: Number(rPos.z.toFixed(2)) },
+      selectedTargetBallId: this.currentTarget ? this.currentTarget.id : null,
+      targetSelectionStatus: this.targetSelectionStatus,
+      targetRejectionReason: this.targetRejectionReason,
+      autonomousState: this.stateMachine.getState(),
+      navigationState: navTele?.state || 'IDLE',
+      navigationTargetCoordinates: navTele?.destination || null,
+      navigationActive: navTele?.isActive ?? false,
+      navigationCancellationReason: navTele?.cancellationReason ?? null,
+      lastNavigationCommandTimestamp: this.lastNavigationCommandTimestamp,
+      lastTargetDiagnostics: targetDiag
+    };
+  }
+
+  /**
+   * Provides real-time state machine status, telemetry, metrics, and diagnostics.
    */
   getStatus() {
-    const sm = this.stateMachine.getTelemetry();
+    const sm = this.stateMachine;
     const possession = this.decisionEngine.evaluatePossession(this.robot);
     const hoopObs = this.visionManager?.getHoopObservation();
-    const target = this.currentTarget || (this.robot?.intake?.capturedBall ? {
-      id: this.robot.intake.capturedBall.id,
-      distance: 0.0,
-      azimuthDeg: 0.0,
-      confidence: 1.0,
-      worldPosition: typeof this.robot.intake.capturedBall.getPosition === 'function' ? this.robot.intake.capturedBall.getPosition() : null
-    } : null);
-
     const remainingShots = this.mode === GAMEPLAY_MODES.FIXED_TARGET
       ? Math.max(0, this.targetShots - this.statistics.successfulShots)
       : 0;
 
     return {
-      state: sm.state,
-      previousState: sm.previousState,
-      timeInState: sm.timeInState,
-      statusMessage: sm.statusMessage,
+      state: sm.getState(),
       isActive: sm.isActive,
-      isPaused: sm.isPaused,
-      isTerminal: sm.isTerminal,
+      isPaused: sm.isPaused(),
+      isTerminal: sm.isTerminal(),
+      timeInState: sm.getTimeInState(),
+      statusMessage: typeof sm.getStatusMessage === 'function' ? sm.getStatusMessage() : (sm.statusMessage || ''),
       mode: this.mode,
       targetShots: this.targetShots,
       remainingShots,
-      statistics: { ...this.statistics },
-      target: target ? {
-        id: target.id,
-        distance: target.distance,
-        bearingDeg: target.azimuthDeg,
-        confidence: target.confidence,
-        worldPosition: target.worldPosition
+      lastFailureCategory: this.lastFailureCategory,
+      lastFailureReason: this.lastFailureReason,
+      currentRecoveryAction: this.currentRecoveryAction,
+      lastSuccessfulOperation: this.lastSuccessfulOperation,
+      consecutiveFailures: this.consecutiveFailures,
+      retries: { ...this.retries },
+      targetSelectionStatus: this.targetSelectionStatus,
+      targetRejectionReason: this.targetRejectionReason,
+      diagnostics: this.getDiagnostics(),
+      statistics: {
+        ...this.statistics,
+        accuracyPercent: parseFloat(this.statistics.accuracyPercent.toFixed(1)),
+        sessionDuration: this.statistics.startTime
+          ? parseFloat(((Date.now() - this.statistics.startTime) / 1000).toFixed(1))
+          : 0.0
+      },
+      target: this.currentTarget ? {
+        id: this.currentTarget.id,
+        distance: this.currentTarget.distance ? parseFloat(this.currentTarget.distance.toFixed(2)) : 0.0,
+        bearingDeg: this.currentTarget.azimuthDeg,
+        confidence: this.currentTarget.confidence,
+        worldPosition: this.currentTarget.worldPosition ? { ...this.currentTarget.worldPosition } : null
       } : null,
       hoop: {
         visible: hoopObs?.visible ?? false,
@@ -972,19 +1288,24 @@ export class AutonomousGameplayController {
         state: this.robot?.shooter?.state || 'IDLE',
         flywheelRpm: this.robot?.shooter?.flywheelRpm || 0,
         isReady: this.robot?.shooter?.state === 'READY'
-      }
+      },
+      shootingPosition: this.targetShootingPos ? {
+        x: parseFloat(this.targetShootingPos.x.toFixed(2)),
+        z: parseFloat(this.targetShootingPos.z.toFixed(2)),
+        distanceToHoop: this.targetShootingPos.targetDistance
+          ? parseFloat(this.targetShootingPos.targetDistance.toFixed(2))
+          : 0.0
+      } : null,
+      activeTrajectory: this.activeTrajectorySolution ? {
+        speed: parseFloat(this.activeTrajectorySolution.speed.toFixed(2)),
+        launchAngleDeg: parseFloat(this.activeTrajectorySolution.launchAngleDeg.toFixed(1)),
+        targetDistance: parseFloat(this.activeTrajectorySolution.targetDistance.toFixed(2))
+      } : null
     };
   }
 
   /**
-   * Returns gameplay statistics.
-   */
-  getStatistics() {
-    return { ...this.statistics };
-  }
-
-  /**
-   * Whether gameplay controller is actively executing.
+   * Whether the autonomous intelligence system is currently executing gameplay.
    */
   get isActive() {
     return this.stateMachine.isActive;

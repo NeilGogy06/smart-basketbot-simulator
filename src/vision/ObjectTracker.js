@@ -113,42 +113,62 @@ export class ObjectTracker {
     const track = this.tracks.get(trackId);
     if (!track) return;
 
-    // Calculate instantaneous velocity vector
-    const dtSafe = Math.max(0.001, dt);
-    const vx = (detection.worldPosition.x - track.worldPosition.x) / dtSafe;
-    const vy = (detection.worldPosition.y - track.worldPosition.y) / dtSafe;
-    const vz = (detection.worldPosition.z - track.worldPosition.z) / dtSafe;
+    // Validate detection world coordinates
+    const detPos = detection.worldPosition;
+    const hasValidPos = detPos && Number.isFinite(detPos.x) && Number.isFinite(detPos.y) && Number.isFinite(detPos.z);
 
-    // Velocity smoothing
-    track.velocity = {
-      x: track.velocity.x * (1 - this.smoothingAlpha) + vx * this.smoothingAlpha,
-      y: track.velocity.y * (1 - this.smoothingAlpha) + vy * this.smoothingAlpha,
-      z: track.velocity.z * (1 - this.smoothingAlpha) + vz * this.smoothingAlpha
-    };
+    if (hasValidPos) {
+      // Calculate instantaneous velocity vector
+      const dtSafe = Math.max(0.001, dt);
+      const vx = (detPos.x - track.worldPosition.x) / dtSafe;
+      const vy = (detPos.y - track.worldPosition.y) / dtSafe;
+      const vz = (detPos.z - track.worldPosition.z) / dtSafe;
 
-    // Position smoothing
-    track.worldPosition = {
-      x: track.worldPosition.x * (1 - this.smoothingAlpha) + detection.worldPosition.x * this.smoothingAlpha,
-      y: track.worldPosition.y * (1 - this.smoothingAlpha) + detection.worldPosition.y * this.smoothingAlpha,
-      z: track.worldPosition.z * (1 - this.smoothingAlpha) + detection.worldPosition.z * this.smoothingAlpha
-    };
+      if (Number.isFinite(vx) && Number.isFinite(vy) && Number.isFinite(vz)) {
+        // Velocity smoothing
+        track.velocity = {
+          x: track.velocity.x * (1 - this.smoothingAlpha) + vx * this.smoothingAlpha,
+          y: track.velocity.y * (1 - this.smoothingAlpha) + vy * this.smoothingAlpha,
+          z: track.velocity.z * (1 - this.smoothingAlpha) + vz * this.smoothingAlpha
+        };
+      }
+
+      // Position smoothing
+      track.worldPosition = {
+        x: track.worldPosition.x * (1 - this.smoothingAlpha) + detPos.x * this.smoothingAlpha,
+        y: track.worldPosition.y * (1 - this.smoothingAlpha) + detPos.y * this.smoothingAlpha,
+        z: track.worldPosition.z * (1 - this.smoothingAlpha) + detPos.z * this.smoothingAlpha
+      };
+    }
 
     track.reference = detection.reference || track.reference || null;
     track.instanceId = detection.instanceId || track.instanceId || null;
-    track.relativePosition = { ...detection.relativePosition };
+    if (detection.relativePosition) {
+      track.relativePosition = { ...detection.relativePosition };
+    }
     track.distance = detection.distance;
     track.azimuthDeg = detection.azimuthDeg;
     track.elevationDeg = detection.elevationDeg;
-    track.screenPosition = { ...detection.screenPosition };
-    track.screen = { ...detection.screenPosition };
-    track.boundingBox = { ...detection.boundingBox };
-    track.screenBoundingBox = { ...detection.boundingBox };
-    track.confidence = detection.confidence;
+    if (detection.screenPosition) {
+      track.screenPosition = { ...detection.screenPosition };
+      track.screen = { ...detection.screenPosition };
+    }
+    if (detection.boundingBox) {
+      track.boundingBox = { ...detection.boundingBox };
+      track.screenBoundingBox = { ...detection.boundingBox };
+    }
+
+    // Temporal confidence smoothing to prevent single-frame flickering at boundaries
+    const rawConf = Number.isFinite(detection.confidence) ? detection.confidence : 0.5;
+    track.confidence = Number.isFinite(track.confidence)
+      ? Number((track.confidence * (1 - this.smoothingAlpha) + rawConf * this.smoothingAlpha).toFixed(2))
+      : rawConf;
 
     track.state = 'TRACKED';
     track.status = 'TRACKED';
     track.isVisible = true;
     track.timeSinceLastSeen = 0.0;
+    track.detectionAge = 0.0;
     track.totalObservations++;
     track.lastSeenTimestamp = Date.now();
   }
@@ -160,6 +180,13 @@ export class ObjectTracker {
     const idNum = this.nextTrackId++;
     const trackId = `BALL_${idNum}`;
 
+    const rawPos = detection.worldPosition || { x: 0, y: 0.12, z: 0 };
+    const safePos = {
+      x: Number.isFinite(rawPos.x) ? rawPos.x : 0,
+      y: Number.isFinite(rawPos.y) ? rawPos.y : 0.12,
+      z: Number.isFinite(rawPos.z) ? rawPos.z : 0
+    };
+
     const newTrack = {
       id: trackId,
       idNum: idNum,
@@ -169,20 +196,21 @@ export class ObjectTracker {
       state: 'TRACKED',
       status: 'TRACKED',
       isVisible: true,
-      worldPosition: { ...detection.worldPosition },
-      relativePosition: { ...detection.relativePosition },
+      worldPosition: safePos,
+      relativePosition: detection.relativePosition ? { ...detection.relativePosition } : { x: 0, y: 0, z: 0 },
       distance: detection.distance,
       azimuthDeg: detection.azimuthDeg,
       elevationDeg: detection.elevationDeg,
-      screenPosition: { ...detection.screenPosition },
-      screen: { ...detection.screenPosition },
-      boundingBox: { ...detection.boundingBox },
-      screenBoundingBox: { ...detection.boundingBox },
-      confidence: detection.confidence,
+      screenPosition: detection.screenPosition ? { ...detection.screenPosition } : { x: 0, y: 0 },
+      screen: detection.screenPosition ? { ...detection.screenPosition } : { x: 0, y: 0 },
+      boundingBox: detection.boundingBox ? { ...detection.boundingBox } : { x: 0, y: 0, width: 0, height: 0 },
+      screenBoundingBox: detection.boundingBox ? { ...detection.boundingBox } : { x: 0, y: 0, width: 0, height: 0 },
+      confidence: Number.isFinite(detection.confidence) ? detection.confidence : 0.5,
       velocity: { x: 0, y: 0, z: 0 },
       firstSeenTimestamp: Date.now(),
       lastSeenTimestamp: Date.now(),
       timeSinceLastSeen: 0.0,
+      detectionAge: 0.0,
       totalObservations: 1
     };
 
@@ -199,7 +227,10 @@ export class ObjectTracker {
     const result = [];
     for (const [_, track] of this.tracks) {
       if (!visibleOnly || track.isVisible) {
-        result.push({ ...track });
+        result.push({
+          ...track,
+          detectionAge: Number(track.timeSinceLastSeen.toFixed(3))
+        });
       }
     }
     result.sort((a, b) => a.distance - b.distance);

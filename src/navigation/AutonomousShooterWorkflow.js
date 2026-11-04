@@ -92,10 +92,21 @@ export class AutonomousShooterWorkflow {
 
     // Step 1: Navigate to the ball's location on court
     const ballPos = this.basketball.getPosition();
+    const robotPos = this.robot.getPosition();
+    const dx = ballPos.x - robotPos.x;
+    const dz = ballPos.z - robotPos.z;
+    const dist = Math.hypot(dx, dz);
+    let targetX = ballPos.x;
+    let targetZ = ballPos.z;
+    if (dist > 0.45) {
+      targetX = ballPos.x - (dx / dist) * 0.45;
+      targetZ = ballPos.z - (dz / dist) * 0.45;
+    }
+
     this.transitionTo('NAVIGATING_TO_BALL', `Acquiring ball at (${ballPos.x.toFixed(1)}, ${ballPos.z.toFixed(1)})`);
 
     // Target a spot 0.45m in front of the ball
-    this.robot.startAutonomousNavigation(ballPos.x, ballPos.z);
+    this.robot.startAutonomousNavigation(targetX, targetZ);
     return true;
   }
 

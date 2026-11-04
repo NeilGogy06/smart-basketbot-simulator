@@ -20,6 +20,7 @@ import { AutonomousShooterWorkflow } from '../navigation/AutonomousShooterWorkfl
 import { VisionManager } from '../vision/VisionManager.js';
 import { AutonomousGameplayController } from '../autonomy/AutonomousGameplayController.js';
 import { AnalyticsManager } from '../analytics/AnalyticsManager.js';
+import { BallTrajectoryTracker } from '../environment/BallTrajectoryTracker.js';
 
 export class Simulation {
   /**
@@ -57,6 +58,7 @@ export class Simulation {
     this.visionManager = null;
     this.gameplayController = null;
     this.analyticsManager = null;
+    this.trajectoryTracker = null;
 
     // Animation frame handle
     this.animationFrameId = null;
@@ -135,6 +137,13 @@ export class Simulation {
 
     // Autonomous Navigation Path Visualizer
     this.pathVisualizer = new PathVisualizer(this.scene);
+
+    // Real-Time 3D Basketball Trajectory Tracking System
+    this.trajectoryTracker = new BallTrajectoryTracker(this.scene, {
+      color: 0x00f0ff,
+      maxPoints: 3000,
+      minDistance: 0.015
+    });
 
     // Court click interaction
     this.onCourtClickCallback = null;
@@ -249,6 +258,15 @@ export class Simulation {
       this.physicsWorld.step(deltaTime);
     }
 
+    // Step basketball lifecycle states, cooldowns, and settling
+    if (this.basketballs && this.basketballs.length > 0) {
+      for (let i = 0; i < this.basketballs.length; i++) {
+        this.basketballs[i].update(deltaTime);
+      }
+    } else if (this.basketball) {
+      this.basketball.update(deltaTime);
+    }
+
     // Update entity visuals & autonomous navigation
     const ballPos = this.basketball ? this.basketball.getPosition() : null;
     const ballVel = this.basketball ? this.basketball.getVelocity() : { x: 0, y: 0, z: 0 };
@@ -256,12 +274,21 @@ export class Simulation {
       this.robot.update(deltaTime, ballPos, this.basketballs || this.basketball);
     }
 
-    // Update hoop scoring detector: track the active in-flight or primary ball
-    if (this.hoopDetector) {
-      const activeBall = this.hoopDetector.activeShot?.ball || this.basketballs?.find(b => b.state === 'IN_FLIGHT' || b.state === 'ENTERED_RIM') || this.basketball;
-      if (activeBall) {
-        this.hoopDetector.update(activeBall.getPosition(), activeBall.getVelocity(), deltaTime);
+    // Determine active basketball for trajectory tracking & scoring detection
+    const activeBall = this.hoopDetector?.activeShot?.ball || this.basketballs?.find(b => b.state === 'IN_FLIGHT' || b.state === 'ENTERED_RIM') || this.basketball;
+
+    // Update real-time 3D basketball trajectory tracker
+    if (this.trajectoryTracker && activeBall) {
+      try {
+        this.trajectoryTracker.update(deltaTime, activeBall, this.robot);
+      } catch (err) {
+        console.warn('[Simulation] Error updating BallTrajectoryTracker:', err);
       }
+    }
+
+    // Update hoop scoring detector: track the active in-flight or primary ball
+    if (this.hoopDetector && activeBall) {
+      this.hoopDetector.update(activeBall.getPosition(), activeBall.getVelocity(), deltaTime);
     }
 
     // Step complete autonomous basketball intelligence (Milestone 7)
@@ -366,6 +393,7 @@ export class Simulation {
       stepCount: physTel.stepCount || 0,
       activeBodies: physTel.activeBodies || 0,
       activeColliders: physTel.activeColliders || 0,
+      trajectory: this.trajectoryTracker ? this.trajectoryTracker.getStatus() : null,
       ball: {
         x: ballPos.x,
         y: ballPos.y,
@@ -478,6 +506,7 @@ export class Simulation {
     if (this.visionManager) this.visionManager.reset();
     if (this.gameplayController) this.gameplayController.reset();
     if (this.pathVisualizer) this.pathVisualizer.clear();
+    if (this.trajectoryTracker) this.trajectoryTracker.clear();
     if (this.analyticsManager) this.analyticsManager.reset();
     console.log('[Simulation] Simulation reset to initial state.');
   }
@@ -527,6 +556,36 @@ export class Simulation {
     if (this.robot && this.robot.intake) {
       this.robot.intake.releaseBall();
       this.robot.intake.reset();
+    }
+    if (this.trajectoryTracker) {
+      this.trajectoryTracker.clear();
+    }
+  }
+
+  /**
+   * Clears the basketball trajectory line and tracking points.
+   */
+  clearTrajectory() {
+    if (this.trajectoryTracker) {
+      this.trajectoryTracker.clear();
+    }
+  }
+
+  /**
+   * Toggles trajectory line visibility.
+   * @returns {boolean} New visibility state
+   */
+  toggleTrajectoryVisibility() {
+    return this.trajectoryTracker ? this.trajectoryTracker.toggleVisibility() : false;
+  }
+
+  /**
+   * Sets trajectory line visibility.
+   * @param {boolean} visible
+   */
+  setTrajectoryVisibility(visible) {
+    if (this.trajectoryTracker) {
+      this.trajectoryTracker.setVisible(visible);
     }
   }
 

@@ -62,6 +62,8 @@ export class AutonomousNavController {
 
     this.state = 'PLANNING';
     this.destination = { x: targetX, z: targetZ };
+    this.lastNavigationCommandTimestamp = Date.now();
+    this.cancellationReason = null;
 
     // Clear dynamic obstacle cache before initial path generation
     this.obstacleManager.updateGrid(null);
@@ -97,10 +99,12 @@ export class AutonomousNavController {
 
   /**
    * Cancels active navigation and halts robot motion.
+   * @param {string} [reason='Navigation cancelled by user']
    */
-  cancel() {
+  cancel(reason = 'Navigation cancelled by user') {
     this.state = 'CANCELLED';
-    this.statusMessage = 'Navigation cancelled by user';
+    this.statusMessage = reason;
+    this.cancellationReason = reason;
     this.waypoints = [];
     this.currentWaypointIndex = 0;
     this.destination = null;
@@ -113,6 +117,7 @@ export class AutonomousNavController {
   emergencyStop() {
     this.state = 'CANCELLED';
     this.statusMessage = 'Emergency Stop triggered';
+    this.cancellationReason = 'Emergency Stop triggered';
     this.waypoints = [];
     this.currentWaypointIndex = 0;
     this.destination = null;
@@ -244,6 +249,9 @@ export class AutonomousNavController {
   replan(currentRobotPose) {
     if (!this.destination) return false;
 
+    // Ensure the dynamic obstacle grid does not block the destination itself
+    this.obstacleManager.updateGrid(null);
+
     const plan = this.planner.planPath(
       { x: currentRobotPose.x, z: currentRobotPose.z },
       this.destination
@@ -253,6 +261,7 @@ export class AutonomousNavController {
       this.waypoints = plan.waypoints;
       this.currentWaypointIndex = (this.waypoints.length > 1) ? 1 : 0;
       this.statusMessage = 'Path replanned around obstacle';
+      this.state = 'NAVIGATING';
       return true;
     } else {
       this.state = 'BLOCKED';
@@ -277,6 +286,7 @@ export class AutonomousNavController {
 
     return {
       state: this.state,
+      isActive: (this.state === 'NAVIGATING' || this.state === 'APPROACHING_GOAL' || this.state === 'PLANNING'),
       statusMessage: this.statusMessage,
       destination: this.destination ? { ...this.destination } : null,
       distanceRemaining: distRemaining,
@@ -284,7 +294,9 @@ export class AutonomousNavController {
       currentWaypointIndex: this.currentWaypointIndex,
       currentWaypoint: currentWP ? { ...currentWP } : null,
       desiredHeadingDeg: (desiredHeadingRad * 180) / Math.PI,
-      headingErrorDeg: (RobotKinematics.normalizeAngle(desiredHeadingRad - currentRobotPose.heading) * 180) / Math.PI
+      headingErrorDeg: (RobotKinematics.normalizeAngle(desiredHeadingRad - currentRobotPose.heading) * 180) / Math.PI,
+      lastNavigationCommandTimestamp: this.lastNavigationCommandTimestamp ?? null,
+      cancellationReason: this.cancellationReason ?? null
     };
   }
 }

@@ -32,6 +32,7 @@ export class Dashboard {
     this.bindVisionControls();
     this.bindAutonomousGameplayControls();
     this.bindAnalyticsControls();
+    this.bindTrajectoryControls();
     this.subscribeTelemetry();
   }
 
@@ -173,6 +174,34 @@ export class Dashboard {
             <div class="grid-item">
               <span class="grid-label">Recoveries</span>
               <span class="grid-value font-mono" id="gameplay-stat-recoveries">0</span>
+            </div>
+          </div>
+
+          <!-- Autonomous Intelligence & Perception-to-Action Diagnostics -->
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.70rem;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: var(--text-secondary);">Target Status:</span>
+              <span class="font-mono text-cyan" id="gameplay-target-status">DETECTED</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: var(--text-secondary);">Rejection Reason:</span>
+              <span class="font-mono text-amber" id="gameplay-rejection-reason">NONE</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: var(--text-secondary);">Nav Controller:</span>
+              <span class="font-mono text-success" id="gameplay-nav-state">IDLE</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: var(--text-secondary);">Last Success:</span>
+              <span class="font-mono text-success" id="gameplay-diag-success">NONE</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+              <span style="color: var(--text-secondary);">Diag Category:</span>
+              <span class="font-mono text-cyan" id="gameplay-diag-category">NOMINAL</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: var(--text-secondary);">Recovery Action:</span>
+              <span class="font-mono text-amber" id="gameplay-diag-action">NONE</span>
             </div>
           </div>
         </div>
@@ -757,6 +786,50 @@ export class Dashboard {
               <span class="grid-value font-mono text-success">Active</span>
             </div>
           </div>
+
+          <!-- REAL-TIME 3D TRAJECTORY TRACKING -->
+          <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08);">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <svg style="width: 14px; height: 14px; color: var(--accent-cyan, #00f0ff);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M 3 19 C 8 8, 16 4, 21 8"></path>
+                  <circle cx="21" cy="8" r="2"></circle>
+                </svg>
+                <span class="sub-label" style="font-size: 0.72rem; color: var(--text-secondary); letter-spacing: 0.05em; font-weight: 600;">3D TRAJECTORY TRACKING</span>
+              </div>
+              <span class="badge badge-slate" id="trajectory-status-badge" style="font-size: 0.65rem;">IDLE</span>
+            </div>
+
+            <div class="telemetry-grid" style="margin-bottom: 8px;">
+              <div class="grid-item">
+                <span class="grid-label">Tracked Points</span>
+                <span class="grid-value font-mono text-cyan" id="txt-trajectory-points">0</span>
+              </div>
+              <div class="grid-item">
+                <span class="grid-label">Path Length</span>
+                <span class="grid-value font-mono text-amber" id="txt-trajectory-length">0.00 m</span>
+              </div>
+              <div class="grid-item">
+                <span class="grid-label">Apex Height</span>
+                <span class="grid-value font-mono" id="txt-trajectory-apex">0.00 m</span>
+              </div>
+              <div class="grid-item">
+                <span class="grid-label">Display</span>
+                <span class="grid-value font-mono text-success" id="txt-trajectory-display">VISIBLE</span>
+              </div>
+            </div>
+
+            <div class="nav-action-row" style="margin-top: 4px;">
+              <button class="btn btn-secondary btn-nav-action" id="btn-toggle-trajectory" title="Toggle 3D Trajectory Visibility (Y)">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <span id="lbl-toggle-trajectory">Hide Trajectory</span>
+              </button>
+              <button class="btn btn-subtle btn-nav-action" id="btn-clear-trajectory" title="Clear recorded 3D trajectory path (X)">
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                <span>Clear</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- QUICK SHORTCUTS CHEATSHEET -->
@@ -772,6 +845,8 @@ export class Dashboard {
             <div><kbd>R</kbd> Reset Sim</div>
             <div><kbd>B</kbd> Reset Ball</div>
             <div><kbd>T</kbd> Drop Test</div>
+            <div><kbd>Y</kbd> Trajectory Toggle</div>
+            <div><kbd>X</kbd> Trajectory Clear</div>
             <div><kbd>1-4</kbd> Cameras</div>
           </div>
         </div>
@@ -806,6 +881,12 @@ export class Dashboard {
       gameplayStatAttempts: this.domElement.querySelector('#gameplay-stat-attempts'),
       gameplayStatRemaining: this.domElement.querySelector('#gameplay-stat-remaining'),
       gameplayStatRecoveries: this.domElement.querySelector('#gameplay-stat-recoveries'),
+      gameplayTargetStatus: this.domElement.querySelector('#gameplay-target-status'),
+      gameplayRejectionReason: this.domElement.querySelector('#gameplay-rejection-reason'),
+      gameplayNavState: this.domElement.querySelector('#gameplay-nav-state'),
+      gameplayDiagSuccess: this.domElement.querySelector('#gameplay-diag-success'),
+      gameplayDiagCategory: this.domElement.querySelector('#gameplay-diag-category'),
+      gameplayDiagAction: this.domElement.querySelector('#gameplay-diag-action'),
 
       // Autonomous Shooter Workflow & Trajectory nodes
       workflowStageBadge: this.domElement.querySelector('#workflow-stage-badge'),
@@ -909,6 +990,14 @@ export class Dashboard {
       ballSpeed: this.domElement.querySelector('#ball-speed'),
       ballVy: this.domElement.querySelector('#ball-vy'),
       ballBadge: this.domElement.querySelector('#ball-flight-badge'),
+
+      // Trajectory Tracking Nodes
+      trajectoryBadge: this.domElement.querySelector('#trajectory-status-badge'),
+      trajectoryPoints: this.domElement.querySelector('#txt-trajectory-points'),
+      trajectoryLength: this.domElement.querySelector('#txt-trajectory-length'),
+      trajectoryApex: this.domElement.querySelector('#txt-trajectory-apex'),
+      trajectoryDisplay: this.domElement.querySelector('#txt-trajectory-display'),
+      lblToggleTrajectory: this.domElement.querySelector('#lbl-toggle-trajectory'),
 
       // Milestone 8 Analytics Nodes
       anKpiTime: this.domElement.querySelector('#an-kpi-time'),
@@ -1508,6 +1597,37 @@ export class Dashboard {
   }
 
   /**
+   * Binds user interaction controls for real-time 3D basketball trajectory tracking.
+   */
+  bindTrajectoryControls() {
+    const btnToggle = this.domElement.querySelector('#btn-toggle-trajectory');
+    const btnClear = this.domElement.querySelector('#btn-clear-trajectory');
+
+    if (btnToggle) {
+      btnToggle.addEventListener('click', () => {
+        if (this.simulation && typeof this.simulation.toggleTrajectoryVisibility === 'function') {
+          const isVisible = this.simulation.toggleTrajectoryVisibility();
+          if (this.nodes.lblToggleTrajectory) {
+            this.nodes.lblToggleTrajectory.textContent = isVisible ? 'Hide Trajectory' : 'Show Trajectory';
+          }
+          if (this.nodes.trajectoryDisplay) {
+            this.nodes.trajectoryDisplay.textContent = isVisible ? 'VISIBLE' : 'HIDDEN';
+            this.nodes.trajectoryDisplay.className = isVisible ? 'grid-value font-mono text-success' : 'grid-value font-mono text-slate';
+          }
+        }
+      });
+    }
+
+    if (btnClear) {
+      btnClear.addEventListener('click', () => {
+        if (this.simulation && typeof this.simulation.clearTrajectory === 'function') {
+          this.simulation.clearTrajectory();
+        }
+      });
+    }
+  }
+
+  /**
    * Subscribes to real-time simulation updates.
    */
   subscribeTelemetry() {
@@ -1617,7 +1737,47 @@ export class Dashboard {
       if (this.nodes.gameplayStatScored && auto.statistics) {
         this.nodes.gameplayStatScored.textContent = `${auto.statistics.successfulShots || 0}`;
         this.nodes.gameplayStatAttempts.textContent = `${auto.statistics.totalAttempts || 0}`;
-        this.nodes.gameplayStatRecoveries.textContent = `${auto.statistics.recoveryAttempts || 0}`;
+        this.nodes.gameplayStatRecoveries.textContent = auto.consecutiveFailures > 0
+          ? `${auto.statistics.recoveryAttempts || 0} (${auto.consecutiveFailures} cons)`
+          : `${auto.statistics.recoveryAttempts || 0}`;
+
+        if (this.nodes.gameplayDiagSuccess) {
+          this.nodes.gameplayDiagSuccess.textContent = auto.lastSuccessfulOperation || 'NONE';
+        }
+        if (this.nodes.gameplayDiagCategory) {
+          this.nodes.gameplayDiagCategory.textContent = auto.lastFailureCategory || 'NOMINAL';
+        }
+        if (this.nodes.gameplayDiagAction) {
+          this.nodes.gameplayDiagAction.textContent = auto.currentRecoveryAction || 'NONE';
+        }
+
+        if (this.nodes.gameplayTargetStatus) {
+          const status = auto.targetSelectionStatus || auto.diagnostics?.targetSelectionStatus || 'IDLE';
+          this.nodes.gameplayTargetStatus.textContent = status;
+          if (status === 'SELECTED' || status === 'NAVIGATING' || status === 'ARRIVED') {
+            this.nodes.gameplayTargetStatus.className = 'font-mono text-success';
+          } else if (status === 'TARGET_REJECTED' || status === 'REPLANNING' || status === 'RECOVERING') {
+            this.nodes.gameplayTargetStatus.className = 'font-mono text-amber';
+          } else {
+            this.nodes.gameplayTargetStatus.className = 'font-mono text-cyan';
+          }
+        }
+
+        if (this.nodes.gameplayRejectionReason) {
+          const reason = auto.targetRejectionReason || auto.diagnostics?.targetRejectionReason || 'NONE';
+          this.nodes.gameplayRejectionReason.textContent = reason;
+          this.nodes.gameplayRejectionReason.className = (reason === 'NONE')
+            ? 'font-mono text-muted'
+            : 'font-mono text-amber';
+        }
+
+        if (this.nodes.gameplayNavState) {
+          const navState = auto.diagnostics?.navigationState || 'IDLE';
+          const navDest = auto.diagnostics?.navigationTargetCoordinates;
+          this.nodes.gameplayNavState.textContent = navDest
+            ? `${navState} (${navDest.x.toFixed(1)}, ${navDest.z.toFixed(1)})`
+            : navState;
+        }
 
         if (this.nodes.gameplayStatRemaining) {
           if (auto.mode === 'FIXED_TARGET') {
@@ -1913,6 +2073,36 @@ export class Dashboard {
     } else {
       this.nodes.ballBadge.textContent = 'RESTING';
       this.nodes.ballBadge.className = 'badge badge-slate';
+    }
+
+    // 3D Basketball Trajectory Tracking telemetry
+    if (data.trajectory && this.nodes.trajectoryBadge) {
+      const tr = data.trajectory;
+      this.nodes.trajectoryBadge.textContent = tr.state;
+      if (tr.state === 'TRACKING') {
+        this.nodes.trajectoryBadge.className = 'badge badge-cyan';
+      } else if (tr.state === 'PRESERVED') {
+        this.nodes.trajectoryBadge.className = 'badge badge-green';
+      } else {
+        this.nodes.trajectoryBadge.className = 'badge badge-slate';
+      }
+
+      if (this.nodes.trajectoryPoints) {
+        this.nodes.trajectoryPoints.textContent = `${tr.pointCount}`;
+      }
+      if (this.nodes.trajectoryLength) {
+        this.nodes.trajectoryLength.textContent = `${tr.totalDistance.toFixed(2)} m`;
+      }
+      if (this.nodes.trajectoryApex) {
+        this.nodes.trajectoryApex.textContent = `${tr.peakHeight.toFixed(2)} m`;
+      }
+      if (this.nodes.trajectoryDisplay) {
+        this.nodes.trajectoryDisplay.textContent = tr.visible ? 'VISIBLE' : 'HIDDEN';
+        this.nodes.trajectoryDisplay.className = tr.visible ? 'grid-value font-mono text-success' : 'grid-value font-mono text-slate';
+      }
+      if (this.nodes.lblToggleTrajectory) {
+        this.nodes.lblToggleTrajectory.textContent = tr.visible ? 'Hide Trajectory' : 'Show Trajectory';
+      }
     }
 
     // Robot Vision telemetry & HUD feed

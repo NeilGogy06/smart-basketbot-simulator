@@ -184,12 +184,15 @@ export class BallDetection {
     const radialDist = Math.hypot(ndcX, ndcY);
     const centerFactor = Math.max(0.4, 1.0 - (radialDist * 0.45));
 
-    // Resolution factor: very small pixel footprints are penalized
+    // Resolution factor: smooth scaling based on apparent pixel footprint
+    // Prevents an abrupt 50% drop at 5.5m in an 18m camera range
     let sizeFactor = 1.0;
-    if (bboxSize < 8) {
-      sizeFactor = 0.5;
-    } else if (bboxSize < 14) {
-      sizeFactor = 0.75;
+    if (bboxSize < 3) {
+      sizeFactor = 0.45;
+    } else if (bboxSize < 6) {
+      sizeFactor = 0.72;
+    } else if (bboxSize < 10) {
+      sizeFactor = 0.88;
     }
 
     const rawConfidence = distFactor * centerFactor * sizeFactor;

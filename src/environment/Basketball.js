@@ -226,14 +226,14 @@ export class Basketball {
     }
 
     // Evaluate physical settling for shot or moving balls
-    if (this.state === 'IN_FLIGHT' || this.state === 'SCORED' || this.state === 'MISSED' || this.state === 'RESTING') {
+    if (this.state === 'IN_FLIGHT' || this.state === 'SCORED' || this.state === 'MISSED' || this.state === 'RESTING' || this.state === 'LOOSE') {
       const pos = this.getPosition();
       const speed = this.getSpeed();
-      const onFloor = pos.y <= (this.config.radius + 0.08);
-      const isSlow = speed < 0.6;
+      const onFloor = pos.y <= (this.config.radius + 0.14); // <= 0.26m
+      const isSlow = speed < 1.2; // Rolling or resting on floor
 
       if (onFloor && isSlow && this.shotCooldownTimer <= 0) {
-        if (this.state !== 'AVAILABLE') {
+        if (this.state !== 'AVAILABLE' && this.state !== 'AVAILABLE_FOR_COLLECTION') {
           this.state = 'AVAILABLE';
           this.isAvailable = true;
           this.isPossessed = false;
@@ -244,15 +244,33 @@ export class Basketball {
   }
 
   /**
+   * Whether the ball has landed on the court floor and is ready for reacquisition.
+   */
+  isLanded() {
+    const pos = this.getPosition();
+    return pos.y <= (this.config.radius + 0.14) && this.shotCooldownTimer <= 0;
+  }
+
+  /**
+   * Whether the ball is currently eligible for collection by the robot.
+   */
+  isCollectible() {
+    if (this.isPossessed) return false;
+    if (this.state === 'POSSESSED' || this.state === 'BEING_COLLECTED') return false;
+    if (this.shotCooldownTimer > 0) return false;
+    return this.isAvailable || this.isLanded();
+  }
+
+  /**
    * Sets the basketball lifecycle state with consistency validation.
-   * @param {'AVAILABLE'|'APPROACHED'|'COLLECTING'|'POSSESSED'|'IN_FLIGHT'|'SCORED'|'MISSED'|'RESTING'} newState
+   * @param {'AVAILABLE'|'AVAILABLE_FOR_COLLECTION'|'APPROACHED'|'COLLECTING'|'BEING_COLLECTED'|'POSSESSED'|'IN_FLIGHT'|'LOOSE'|'SCORED'|'MISSED'|'RESTING'} newState
    */
   setState(newState) {
     this.state = newState;
-    if (newState === 'POSSESSED') {
+    if (newState === 'POSSESSED' || newState === 'BEING_COLLECTED') {
       this.isPossessed = true;
       this.isAvailable = false;
-    } else if (newState === 'AVAILABLE') {
+    } else if (newState === 'AVAILABLE' || newState === 'AVAILABLE_FOR_COLLECTION' || newState === 'LOOSE') {
       this.isPossessed = false;
       this.isAvailable = true;
       this.possessedBy = null;

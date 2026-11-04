@@ -37,6 +37,13 @@ export class AutonomousStateMachine {
   }
 
   /**
+   * Returns status message of the current state.
+   */
+  getStatusMessage() {
+    return this.statusMessage;
+  }
+
+  /**
    * Whether state machine is in active gameplay (not IDLE, PAUSED, or terminal).
    */
   get isActive() {
